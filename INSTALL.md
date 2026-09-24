@@ -285,6 +285,12 @@ The **Receive Extole Events** tab lets Extole send events (e.g. a reward being e
 
 **Back in the Extole component's configuration:**
 
+> Steps 10-11 assume the Extole-side "Salesforce" integration component already exists for your
+> account. If it doesn't yet, it isn't something this app deploys — it lives in
+> [extole-sfdc-component](https://github.com/extole/extole-sfdc-component), which has its own
+> README covering what it is and how to install it (there's no deploy script yet, so it's a manual
+> Management API build).
+
 10. Set the Security Center key from step 9 as the `CLIENT_KEY` setting, and the endpoint URL from step 8 as the webhook target setting
 11. Check the **Enable Salesforce Writeback** setting to turn on the outbound webhooks. This is **off by default** — if your account doesn't want any data written back to Salesforce, simply leave it unchecked. No request is ever built or sent while off (checked at the very start of the webhook's own script, before any reward/event data is touched), so nothing leaves the Extole platform and nothing is logged on either side — this is different from just arriving and being silently skipped.
 
