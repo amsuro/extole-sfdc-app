@@ -105,4 +105,10 @@ private class ExtoleWritebackControllerTest {
         System.assertEquals(1, configs.size());
         System.assertEquals(true, configs[0].Create_If_Not_Found__c);
     }
+
+    @IsTest
+    static void testIsPersonAccountsEnabledMatchesOrgSetting() {
+        Boolean expected = Schema.sObjectType.Account.fields.getMap().containsKey('ispersonaccount');
+        System.assertEquals(expected, ExtoleWritebackController.isPersonAccountsEnabled());
+    }
 }

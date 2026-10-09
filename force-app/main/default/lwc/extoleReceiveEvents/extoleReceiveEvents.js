@@ -2,6 +2,7 @@ import { LightningElement, track } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import LightningConfirm from 'lightning/confirm';
 import getEndpointUrl from '@salesforce/apex/ExtoleWritebackController.getEndpointUrl';
+import isPersonAccountsEnabled from '@salesforce/apex/ExtoleWritebackController.isPersonAccountsEnabled';
 import getWritebackConfigs from '@salesforce/apex/ExtoleWritebackController.getWritebackConfigs';
 import saveWritebackConfig from '@salesforce/apex/ExtoleWritebackController.saveWritebackConfig';
 import deleteWritebackConfig from '@salesforce/apex/ExtoleWritebackController.deleteWritebackConfig';
@@ -29,11 +30,18 @@ export default class ExtoleReceiveEvents extends LightningElement {
 
     userTimezone = null;
 
+    @track personAccountsEnabled = false;
+
     async connectedCallback() {
         try {
             this.userTimezone = await getCurrentUserTimezone();
         } catch {
             this.userTimezone = null;
+        }
+        try {
+            this.personAccountsEnabled = await isPersonAccountsEnabled();
+        } catch {
+            this.personAccountsEnabled = false;
         }
         await Promise.all([
             this.loadEndpoint(),
@@ -148,10 +156,18 @@ export default class ExtoleReceiveEvents extends LightningElement {
     }
 
     get objectTypeOptions() {
-        return [
+        const options = [
             { label: 'Contact', value: 'Contact' },
             { label: 'Lead', value: 'Lead' }
         ];
+        if (this.personAccountsEnabled) {
+            options.push({ label: 'Person Account', value: 'Account' });
+        }
+        return options;
+    }
+
+    get showCreateOption() {
+        return this.editingConfig.Object_Type__c !== 'Account';
     }
 
     get statusOptions() {

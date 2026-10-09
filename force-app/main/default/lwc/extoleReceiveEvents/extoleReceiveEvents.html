@@ -40,7 +40,7 @@
                 </p>
                 <p class="setup-step">
                     <strong>3. Add writeback rules below</strong> to map
-                    incoming event fields to Contact or Lead fields.
+                    incoming event fields to Contact, Lead, or Person Account fields.
                 </p>
             </div>
         </div>
@@ -324,14 +324,16 @@
                         required
                     ></lightning-combobox>
 
-                    <lightning-input
-                        type="checkbox"
-                        label="Create the record if it is not found"
-                        checked={editingConfig.Create_If_Not_Found__c}
-                        data-field="Create_If_Not_Found__c"
-                        field-level-help="When no existing record has the event's email, create a new one with the email (and first name, if sent). Turn this on for sign-up rules. Leave it off for rules like reward_earned, where the record should already exist."
-                        onchange={handleCheckboxChange}
-                    ></lightning-input>
+                    <template lwc:if={showCreateOption}>
+                        <lightning-input
+                            type="checkbox"
+                            label="Create the record if it is not found"
+                            checked={editingConfig.Create_If_Not_Found__c}
+                            data-field="Create_If_Not_Found__c"
+                            field-level-help="When no existing record has the event's email, create a new one with the email (and first name, if sent). Turn this on for sign-up rules. Leave it off for rules like reward_earned, where the record should already exist."
+                            onchange={handleCheckboxChange}
+                        ></lightning-input>
+                    </template>
 
                     <lightning-combobox
                         label="Status"

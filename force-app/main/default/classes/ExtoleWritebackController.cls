@@ -13,6 +13,11 @@ global without sharing class ExtoleWritebackController {
             '/services/apexrest/extole/events';
     }
 
+    @AuraEnabled(cacheable=true)
+    public static Boolean isPersonAccountsEnabled() {
+        return Schema.sObjectType.Account.fields.getMap().containsKey('ispersonaccount');
+    }
+
     @AuraEnabled(cacheable=false)
     public static List<Extole_Writeback_Cfg__c> getWritebackConfigs() {
         return [

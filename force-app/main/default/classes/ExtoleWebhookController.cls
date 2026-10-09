@@ -26,6 +26,8 @@ global without sharing class ExtoleWebhookController {
                 ? (Map<String, Object>) body.get('data')
                 : new Map<String, Object>();
             email = (String) data.get('email');
+            if (email != null)
+                email = email.trim();
             salesforceId = (String) data.get('salesforce_id');
         } catch (Exception e) {
             response.statusCode = 400;
@@ -89,9 +91,32 @@ global without sharing class ExtoleWebhookController {
             String errDetail = null;
             String recordId = null;
 
+            Extole_Writeback_Lock__c lock = null;
+            try {
+                lock = acquireLock(email, objectType);
+            } catch (Exception e) {
+                // Another delivery for this person is still running. Ask Extole to retry rather
+                // than risk a duplicate or silently drop the event.
+                response.statusCode = 503;
+                response.responseBody = Blob.valueOf('{"error":"busy_retry"}');
+                return;
+            }
+
             try {
                 SObject record = findRecord(objectType, email, salesforceId);
-                if (record == null && config.Create_If_Not_Found__c && String.isNotBlank(email)) {
+                Boolean canCreate = record == null
+                    && config.Create_If_Not_Found__c
+                    && String.isNotBlank(email)
+                    && objectType != 'Account';
+                if (canCreate && personAlreadyExists(email)) {
+                    // Creating a Lead/Contact here would duplicate an existing person.
+                    status = 'SKIPPED';
+                    errDetail =
+                        'A Contact or Person Account already exists for ' +
+                        email +
+                        '; set this rule\'s Object Type to Contact or Account instead of creating a ' +
+                        objectType;
+                } else if (canCreate) {
                     record = newRecord(objectType, email, data);
                     applyMappings(record, config.Field_Mappings__c, data);
                     insert record;
@@ -115,6 +140,7 @@ global without sharing class ExtoleWebhookController {
                 status = 'FAILED';
                 errDetail = e.getMessage();
             }
+            releaseLock(lock);
 
             logs.add(
                 buildLog(
@@ -176,6 +202,8 @@ global without sharing class ExtoleWebhookController {
                 if (!r.isEmpty())
                     return r[0];
             }
+        } else if (objectType == 'Account') {
+            return findPersonAccount(email, salesforceId);
         } else if (objectType == 'Lead') {
             if (String.isNotBlank(salesforceId)) {
                 List<Lead> r = [
@@ -202,6 +230,67 @@ global without sharing class ExtoleWebhookController {
         return null;
     }
 
+    // The unique Key__c makes a second insert for the same person wait until the first
+    // transaction finishes, so the find-or-create is never run twice at once for one person.
+    @TestVisible
+    private static Extole_Writeback_Lock__c acquireLock(String email, String objectType) {
+        if (String.isBlank(email))
+            return null;
+        Extole_Writeback_Lock__c lock = new Extole_Writeback_Lock__c(
+            Key__c = (email + '|' + objectType).toLowerCase()
+        );
+        insert lock;
+        return lock;
+    }
+
+    @TestVisible
+    private static void releaseLock(Extole_Writeback_Lock__c lock) {
+        if (lock != null && lock.Id != null) {
+            try {
+                delete lock;
+            } catch (Exception ignore) {
+            }
+        }
+    }
+
+    @TestVisible
+    private static Boolean personAlreadyExists(String email) {
+        if (String.isBlank(email))
+            return false;
+        // A Person Account's hidden contact is returned here too.
+        if (![SELECT Id FROM Contact WHERE Email = :email LIMIT 1].isEmpty())
+            return true;
+        return findPersonAccount(email, null) != null;
+    }
+
+    // PersonEmail and IsPersonAccount only exist when Person Accounts is enabled,
+    // so these queries are dynamic and the class still compiles everywhere.
+    @TestVisible
+    private static Boolean personAccountsEnabled() {
+        return Schema.sObjectType.Account.fields.getMap().containsKey('ispersonaccount');
+    }
+
+    @TestVisible
+    private static SObject findPersonAccount(String email, String salesforceId) {
+        if (!personAccountsEnabled())
+            return null;
+        if (String.isNotBlank(salesforceId)) {
+            List<SObject> r = Database.query(
+                'SELECT Id FROM Account WHERE Id = :salesforceId AND IsPersonAccount = true LIMIT 1'
+            );
+            if (!r.isEmpty())
+                return r[0];
+        }
+        if (String.isNotBlank(email)) {
+            List<SObject> r = Database.query(
+                'SELECT Id FROM Account WHERE PersonEmail = :email AND IsPersonAccount = true ORDER BY CreatedDate DESC LIMIT 1'
+            );
+            if (!r.isEmpty())
+                return r[0];
+        }
+        return null;
+    }
+
     @TestVisible
     private static SObject newRecord(
         String objectType,
@@ -217,12 +306,12 @@ global without sharing class ExtoleWebhookController {
         if (objectType == 'Contact') {
             return new Contact(Email = email, FirstName = firstName, LastName = lastName);
         } else if (objectType == 'Lead') {
-            return new Lead(
-                Email = email,
-                FirstName = firstName,
-                LastName = lastName,
-                Company = 'Unknown'
-            );
+            Lead l = new Lead(Email = email, FirstName = firstName, LastName = lastName);
+            // A Lead with a Company converts to a business Account. When Person Accounts is
+            // on, leave Company blank so conversion produces a Person Account.
+            if (!personAccountsEnabled())
+                l.Company = 'Unknown';
+            return l;
         }
         throw new ExtoleApiException(
             'Cannot create record for unsupported Object_Type__c: ' + objectType
