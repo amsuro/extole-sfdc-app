@@ -37,8 +37,8 @@ This can't be deployed, so each org sets it once.
 
 Receive Extole Events authenticates with the Client Credentials flow (INSTALL.md, Step 10),
 so records the writeback creates or updates show that app's **Run As** user (Created By,
-Last Modified By and Owner). Make the Run As user a dedicated integration user with API
-access and access to the objects your rules write to, so records don't show a person.
+Last Modified By and Owner). Make the Run As user a dedicated integration user and assign
+it the **Extole Webhook Integration** permission set, so records don't show a person.
 
 ## Not covered yet
 
