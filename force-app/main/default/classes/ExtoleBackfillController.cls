@@ -127,6 +127,11 @@ public with sharing class ExtoleBackfillController {
     // Audience preview count
     // ─────────────────────────────────────────────────────────────────────────
 
+    @AuraEnabled(cacheable=true)
+    public static Boolean isPersonAccountsEnabled() {
+        return Schema.sObjectType.Account.fields.getMap().containsKey('ispersonaccount');
+    }
+
     @AuraEnabled(cacheable=false)
     public static Integer previewCount(String objectType, String audienceType, String selectedDate, String reportId) {
         if (audienceType == 'report' && String.isNotBlank(reportId)) {
@@ -185,6 +190,13 @@ public with sharing class ExtoleBackfillController {
         Extole_App_Settings__c s = Extole_App_Settings__c.getOrgDefaults();
         if (s.Id == null) s = new Extole_App_Settings__c(SetupOwnerId = UserInfo.getOrganizationId());
         if (objectType == 'Lead') s.Lead_Share_Link_Field__c = fieldName;
+        else if (objectType == 'Account') {
+            // A person account's custom contact fields carry a __pc suffix. The setting is
+            // stored by its Contact name (the same value the Person Card reads).
+            s.Contact_Share_Link_Field__c = fieldName.endsWith('__pc')
+                ? fieldName.removeEnd('__pc') + '__c'
+                : fieldName;
+        }
         else                      s.Contact_Share_Link_Field__c = fieldName;
         upsert s;
     }
@@ -235,7 +247,13 @@ public with sharing class ExtoleBackfillController {
 
     private static Integer countFromDefaultFilter(String objectType) {
         try {
-            if (objectType == 'Contact') {
+            if (objectType == 'Account') {
+                // Dynamic: IsPersonAccount/PersonEmail only exist when Person Accounts is enabled.
+                return Database.countQuery(
+                    'SELECT COUNT() FROM Account WHERE IsPersonAccount = true AND PersonEmail != null ' +
+                    'AND Id IN (SELECT AccountId FROM Opportunity WHERE StageName = \'Closed Won\' AND AccountId != null)'
+                );
+            } else if (objectType == 'Contact') {
                 return [
                     SELECT COUNT() FROM Contact
                     WHERE Email != null
@@ -252,7 +270,11 @@ public with sharing class ExtoleBackfillController {
     private static Integer countFromDateFilter(String objectType, String selectedDate) {
         try {
             Date d = Date.valueOf(selectedDate);
-            if (objectType == 'Contact') {
+            if (objectType == 'Account') {
+                return Database.countQuery(
+                    'SELECT COUNT() FROM Account WHERE IsPersonAccount = true AND PersonEmail != null AND CreatedDate >= :d'
+                );
+            } else if (objectType == 'Contact') {
                 return Database.countQuery(
                     'SELECT COUNT() FROM Contact WHERE Email != null AND CreatedDate >= :d'
                 );
@@ -277,6 +299,7 @@ public with sharing class ExtoleBackfillController {
     }
 
     private static String defaultFilterDescription(String objectType) {
+        if (objectType == 'Account') return 'Person Accounts with a Closed Won opportunity';
         return objectType == 'Contact'
             ? 'Contacts on accounts with a Closed Won opportunity'
             : 'Unconverted leads with email';

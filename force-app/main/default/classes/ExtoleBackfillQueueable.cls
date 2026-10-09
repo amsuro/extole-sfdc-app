@@ -89,7 +89,7 @@ public class ExtoleBackfillQueueable implements Queueable, Database.AllowsCallou
         List<SObject> toUpdate = new List<SObject>();
 
         for (SObject r : chunk) {
-            String email = (String) r.get('Email');
+            String email = (String) r.get(objectType == 'Account' ? 'PersonEmail' : 'Email');
             if (String.isBlank(email)) {
                 errorCount++;
                 errors.add(
@@ -117,7 +117,9 @@ public class ExtoleBackfillQueueable implements Queueable, Database.AllowsCallou
 
             SObject updated = objectType == 'Contact'
                 ? (SObject) new Contact(Id = (Id) r.get('Id'))
-                : (SObject) new Lead(Id = (Id) r.get('Id'));
+                : objectType == 'Account'
+                    ? (SObject) new Account(Id = (Id) r.get('Id'))
+                    : (SObject) new Lead(Id = (Id) r.get('Id'));
             updated.put(targetField, shareLink);
             toUpdate.add(updated);
             successCount++;
@@ -322,6 +324,31 @@ public class ExtoleBackfillQueueable implements Queueable, Database.AllowsCallou
 
     private List<SObject> queryNextCursorChunk() {
         try {
+            if (objectType == 'Account') {
+                // Person Accounts only. Fields are dynamic: they exist only when the feature is on.
+                Date dateFilter = (audienceType == 'date' && String.isNotBlank(selectedDate))
+                    ? Date.valueOf(selectedDate)
+                    : null;
+                List<String> accountFilters = new List<String>{
+                    'IsPersonAccount = true',
+                    'PersonEmail != null'
+                };
+                if (dateFilter != null) {
+                    accountFilters.add('CreatedDate >= :dateFilter');
+                } else {
+                    accountFilters.add(
+                        'Id IN (SELECT AccountId FROM Opportunity WHERE StageName = \'Closed Won\' AND AccountId != null)'
+                    );
+                }
+                if (cursor != null)
+                    accountFilters.add('Id > \'' + cursor + '\'');
+                return Database.query(
+                    'SELECT Id, Name, PersonEmail FROM Account WHERE ' +
+                        String.join(accountFilters, ' AND ') +
+                        ' ORDER BY Id ASC LIMIT ' +
+                        CHUNK_SIZE
+                );
+            }
             if (audienceType == 'date' && String.isNotBlank(selectedDate)) {
                 Date dateFilter = Date.valueOf(selectedDate);
                 String soql =
@@ -365,6 +392,24 @@ public class ExtoleBackfillQueueable implements Queueable, Database.AllowsCallou
 
     private List<SObject> queryRecords(List<Id> ids) {
         try {
+            if (objectType == 'Account') {
+                // A person account report may list Account Ids (ACCOUNT_ID) or the person's
+                // Contact Ids (PC_CONTACT_ID). Resolve any Contact Ids to their Account.
+                Set<Id> accountIds = new Set<Id>();
+                Set<Id> contactIds = new Set<Id>();
+                for (Id i : ids) {
+                    if (i.getSobjectType() == Contact.SObjectType) contactIds.add(i);
+                    else accountIds.add(i);
+                }
+                if (!contactIds.isEmpty()) {
+                    for (Contact c : [SELECT AccountId FROM Contact WHERE Id IN :contactIds AND AccountId != null]) {
+                        accountIds.add(c.AccountId);
+                    }
+                }
+                return Database.query(
+                    'SELECT Id, Name, PersonEmail FROM Account WHERE Id IN :accountIds AND IsPersonAccount = true ORDER BY Id ASC'
+                );
+            }
             return Database.query(
                 'SELECT Id, Name, Email FROM ' +
                     objectType +

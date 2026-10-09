@@ -342,4 +342,44 @@ private class ExtoleBackfillQueueableTest {
             return res;
         }
     }
+
+    // ─── Person Accounts (skipped in orgs where the feature is off) ───────────
+
+    private static Boolean personAccountsEnabled() {
+        return Schema.sObjectType.Account.fields.getMap().containsKey('ispersonaccount');
+    }
+
+    private static SObject makePersonAccount(String email) {
+        Id personRt = (Id) Database.query(
+            'SELECT Id FROM RecordType WHERE SobjectType = \'Account\' AND IsPersonType = true LIMIT 1'
+        )[0].get('Id');
+        SObject pa = Schema.getGlobalDescribe().get('Account').newSObject();
+        pa.put('RecordTypeId', personRt);
+        pa.put('FirstName', 'Pat');
+        pa.put('LastName', 'Person');
+        pa.put('PersonEmail', email);
+        insert pa;
+        return pa;
+    }
+
+    @IsTest
+    static void testPersonAccountDateFilterWritesShareLinkToAccount() {
+        if (!personAccountsEnabled()) return;
+        SObject pa = makePersonAccount('happy.person@extole-test.com');
+        Extole_Backfill_Log__c log = makeLog('Account');
+
+        Test.setMock(HttpCalloutMock.class, new HappyPathMock());
+        Test.startTest();
+        System.enqueueJob(new ExtoleBackfillQueueable(
+            log.Id, 'Account', 'date', yesterday(), null, 'Extole_Share_Link__pc', '', null
+        ));
+        Test.stopTest();
+
+        Extole_Backfill_Log__c result = [SELECT Status__c, Success_Count__c FROM Extole_Backfill_Log__c WHERE Id = :log.Id];
+        System.assertEquals(1, (Integer) result.Success_Count__c);
+        SObject updated = Database.query(
+            'SELECT Extole_Share_Link__pc FROM Account WHERE Id = \'' + (Id) pa.get('Id') + '\''
+        )[0];
+        System.assert(((String) updated.get('Extole_Share_Link__pc')).startsWith('https://'));
+    }
 }

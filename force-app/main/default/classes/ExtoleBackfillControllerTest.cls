@@ -587,4 +587,82 @@ private class ExtoleBackfillControllerTest {
             'All logs should be deleted'
         );
     }
+
+    // ─── Person Accounts (skipped in orgs where the feature is off) ───────────
+
+    private static Boolean personAccountsEnabled() {
+        return Schema.sObjectType.Account.fields.getMap().containsKey('ispersonaccount');
+    }
+
+    private static SObject makePersonAccount(String email) {
+        Id personRt = (Id) Database.query(
+            'SELECT Id FROM RecordType WHERE SobjectType = \'Account\' AND IsPersonType = true LIMIT 1'
+        )[0].get('Id');
+        SObject pa = Schema.getGlobalDescribe().get('Account').newSObject();
+        pa.put('RecordTypeId', personRt);
+        pa.put('FirstName', 'Pat');
+        pa.put('LastName', 'Person');
+        pa.put('PersonEmail', email);
+        insert pa;
+        return pa;
+    }
+
+    private class NotFoundMock implements HttpCalloutMock {
+        public HTTPResponse respond(HTTPRequest req) {
+            HttpResponse res = new HttpResponse();
+            res.setStatusCode(404);
+            res.setBody('{}');
+            return res;
+        }
+    }
+
+    @IsTest
+    static void testIsPersonAccountsEnabledMatchesOrgSetting() {
+        System.assertEquals(personAccountsEnabled(), ExtoleBackfillController.isPersonAccountsEnabled());
+    }
+
+    @IsTest
+    static void testPreviewCountDateFilterPersonAccountsCountsOnlyPersonAccounts() {
+        if (!personAccountsEnabled()) return;
+        makePersonAccount('count.person@example.com');
+        insert new Contact(LastName = 'Plain', Email = 'plain.contact@example.com');
+
+        Integer count = ExtoleBackfillController.previewCount(
+            'Account', 'date', String.valueOf(Date.today().addDays(-1)), null
+        );
+
+        System.assertEquals(1, count, 'Only the Person Account should count, not the plain Contact');
+    }
+
+    @IsTest
+    static void testPreviewCountDefaultPersonAccountsRequiresClosedWonOpp() {
+        if (!personAccountsEnabled()) return;
+        SObject withOpp = makePersonAccount('won.person@example.com');
+        makePersonAccount('no.opp.person@example.com');
+        insert new Opportunity(
+            Name = 'Won', StageName = 'Closed Won', CloseDate = Date.today(), AccountId = (Id) withOpp.get('Id')
+        );
+
+        Integer count = ExtoleBackfillController.previewCount('Account', 'default', null, null);
+
+        System.assertEquals(1, count);
+    }
+
+    @IsTest
+    static void testStartBackfillPersonAccountStoresShareLinkSettingByContactName() {
+        if (!personAccountsEnabled()) return;
+        Test.setMock(HttpCalloutMock.class, new NotFoundMock());
+
+        Test.startTest();
+        ExtoleBackfillController.startBackfill(
+            'Account', 'default', null, null, 'Extole_Share_Link__pc', null, null
+        );
+        Test.stopTest();
+
+        System.assertEquals(
+            'Extole_Share_Link__c',
+            Extole_App_Settings__c.getOrgDefaults().Contact_Share_Link_Field__c,
+            'The person account field is stored by its Contact name so the Person Card reads the same setting'
+        );
+    }
 }
