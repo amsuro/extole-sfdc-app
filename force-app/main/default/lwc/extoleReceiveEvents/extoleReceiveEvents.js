@@ -117,6 +117,7 @@ export default class ExtoleReceiveEvents extends LightningElement {
         const statusClass =
             {
                 SUCCESS: 'status-badge status-active',
+                CREATED: 'status-badge status-active',
                 FAILED: 'status-badge status-failed',
                 SKIPPED: 'status-badge status-skipped'
             }[l.Status__c] || 'status-badge status-skipped';
@@ -339,6 +340,14 @@ export default class ExtoleReceiveEvents extends LightningElement {
         this.editingConfig = {};
         this.mappingRows = [];
         this.modalError = null;
+    }
+
+    handleCheckboxChange(event) {
+        const field = event.currentTarget.dataset.field;
+        this.editingConfig = {
+            ...this.editingConfig,
+            [field]: event.target.checked
+        };
     }
 
     handleFieldChange(event) {

@@ -161,7 +161,7 @@
                 <div class="settings-card-title">
                     Event Log
                     <lightning-helptext
-                        content="One row per writeback attempt. SUCCESS = field(s) updated. SKIPPED = no matching record or no active rule. FAILED = unhandled error. Logs auto-purge after 30 days."
+                        content="One row per writeback attempt. SUCCESS = field(s) updated. CREATED = no match, so a new record was created. SKIPPED = no matching record or no active rule. FAILED = unhandled error. Logs auto-purge after 30 days."
                     ></lightning-helptext>
                 </div>
                 <div class="diag-header-actions">
@@ -323,6 +323,15 @@
                         onchange={handleFieldChange}
                         required
                     ></lightning-combobox>
+
+                    <lightning-input
+                        type="checkbox"
+                        label="Create the record if it is not found"
+                        checked={editingConfig.Create_If_Not_Found__c}
+                        data-field="Create_If_Not_Found__c"
+                        field-level-help="When no existing record has the event's email, create a new one with the email (and first name, if sent). Turn this on for sign-up rules. Leave it off for rules like reward_earned, where the record should already exist."
+                        onchange={handleCheckboxChange}
+                    ></lightning-input>
 
                     <lightning-combobox
                         label="Status"

@@ -56,7 +56,7 @@ global without sharing class ExtoleWebhookController {
         }
 
         List<Extole_Writeback_Cfg__c> configs = [
-            SELECT Id, Object_Type__c, Field_Mappings__c
+            SELECT Id, Object_Type__c, Field_Mappings__c, Create_If_Not_Found__c
             FROM Extole_Writeback_Cfg__c
             WHERE Event_Name__c = :eventName AND Status__c = 'ACTIVE'
             LIMIT 50
@@ -91,7 +91,13 @@ global without sharing class ExtoleWebhookController {
 
             try {
                 SObject record = findRecord(objectType, email, salesforceId);
-                if (record == null) {
+                if (record == null && config.Create_If_Not_Found__c && String.isNotBlank(email)) {
+                    record = newRecord(objectType, email, data);
+                    applyMappings(record, config.Field_Mappings__c, data);
+                    insert record;
+                    recordId = (String) record.get('Id');
+                    status = 'CREATED';
+                } else if (record == null) {
                     status = 'SKIPPED';
                     errDetail =
                         'No matching ' +
@@ -194,6 +200,30 @@ global without sharing class ExtoleWebhookController {
             }
         }
         return null;
+    }
+
+    @TestVisible
+    private static SObject newRecord(
+        String objectType,
+        String email,
+        Map<String, Object> data
+    ) {
+        // Sign-ups only provide an email and sometimes a first name. Salesforce requires a
+        // Last Name (and a Company on Leads), so those get a placeholder a rep can replace.
+        String firstName = data == null ? null : (String) data.get('first_name');
+        if (objectType == 'Contact') {
+            return new Contact(Email = email, FirstName = firstName, LastName = 'Unknown');
+        } else if (objectType == 'Lead') {
+            return new Lead(
+                Email = email,
+                FirstName = firstName,
+                LastName = 'Unknown',
+                Company = 'Unknown'
+            );
+        }
+        throw new ExtoleApiException(
+            'Cannot create record for unsupported Object_Type__c: ' + objectType
+        );
     }
 
     @TestVisible
