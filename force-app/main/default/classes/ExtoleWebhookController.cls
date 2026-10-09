@@ -208,16 +208,19 @@ global without sharing class ExtoleWebhookController {
         String email,
         Map<String, Object> data
     ) {
-        // Sign-ups only provide an email and sometimes a first name. Salesforce requires a
-        // Last Name (and a Company on Leads), so those get a placeholder a rep can replace.
+        // Use the names the sign-up provides. Salesforce requires a Last Name (and a Company
+        // on Leads), so anything missing gets an "Unknown" placeholder a rep can replace.
         String firstName = data == null ? null : (String) data.get('first_name');
+        String lastName = data == null ? null : (String) data.get('last_name');
+        if (String.isBlank(lastName))
+            lastName = 'Unknown';
         if (objectType == 'Contact') {
-            return new Contact(Email = email, FirstName = firstName, LastName = 'Unknown');
+            return new Contact(Email = email, FirstName = firstName, LastName = lastName);
         } else if (objectType == 'Lead') {
             return new Lead(
                 Email = email,
                 FirstName = firstName,
-                LastName = 'Unknown',
+                LastName = lastName,
                 Company = 'Unknown'
             );
         }

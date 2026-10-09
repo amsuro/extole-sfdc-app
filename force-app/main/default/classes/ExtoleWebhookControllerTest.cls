@@ -467,4 +467,22 @@ private class ExtoleWebhookControllerTest {
             [SELECT Description FROM Lead WHERE Email = 'existing.lead@example.com'].Description
         );
     }
+
+    @IsTest
+    static void testCreateUsesLastNameFromPayloadWhenSent() {
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+        setRequest(
+            '{"event_name":"signed_up","data":{"email":"full.name@example.com","first_name":"Nia","last_name":"Named"}}'
+        );
+
+        Test.startTest();
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        Lead l = [SELECT FirstName, LastName FROM Lead WHERE Email = 'full.name@example.com'];
+        System.assertEquals('Nia', l.FirstName);
+        System.assertEquals('Named', l.LastName);
+    }
 }
