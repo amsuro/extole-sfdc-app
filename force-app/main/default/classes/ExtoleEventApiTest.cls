@@ -79,4 +79,23 @@ private class ExtoleEventApiTest {
         System.assert(body.contains('test@test.com'));
         System.assertEquals('POST', req.getMethod());
     }
+
+    @IsTest
+    static void testFireResponseReadsEventIdFromV6Response() {
+        Test.setMock(
+            HttpCalloutMock.class,
+            new ExtoleConfigurableMock().withDefault(200, '{"event_id":"evt-v6","person_id":"p-1"}')
+        );
+        HttpResponse raw = new ExtoleClient().send(
+            config(),
+            new ExtoleEventFireRequest('close_won').build(config())
+        );
+        System.assertEquals('evt-v6', ExtoleEventFireResponse.fromResponse(raw).eventId);
+    }
+
+    @IsTest
+    static void testFireRequestTargetsV6Events() {
+        HttpRequest req = new ExtoleEventFireRequest('close_won').build(config());
+        System.assert(req.getEndpoint().endsWith('/v6/events'), 'Should post to the documented v6 events endpoint');
+    }
 }

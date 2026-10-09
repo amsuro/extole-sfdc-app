@@ -218,7 +218,7 @@ public with sharing class ExtoleToolingService {
             + '            String bodyStr = JSON.serialize(payload);\n'
             + '\n'
             + '            HttpRequest req = new HttpRequest();\n'
-            + '            req.setEndpoint(\'callout:Extole_API/v5/events\');\n'
+            + '            req.setEndpoint(\'callout:Extole_API/v6/events\');\n'
             + '            req.setMethod(\'POST\');\n'
             + '            req.setHeader(\'Content-Type\', \'application/json\');\n'
             + '            req.setBody(bodyStr);\n'

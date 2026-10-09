@@ -1,7 +1,7 @@
 @NamespaceAccessible
 public class ExtoleConstants {
     public static final String BASE_URL                  = 'https://api.extole.io';
-    public static final String EVENTS_PATH               = '/v5/events';
+    public static final String EVENTS_PATH               = '/v6/events';
     public static final String PEOPLE_PATH               = '/v5/persons';
     public static final String REWARDS_PATH              = '/rewards';
     public static final String CAMPAIGNS_SUMMARY_PATH    = '/v2/campaign-summaries';
