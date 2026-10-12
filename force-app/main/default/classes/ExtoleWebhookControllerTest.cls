@@ -395,7 +395,7 @@ private class ExtoleWebhookControllerTest {
         System.assertEquals('Nia', created.FirstName);
         System.assertEquals('Unknown', created.LastName, 'Salesforce requires a Last Name');
         System.assertEquals(
-            personAccountsEnabled() ? null : 'Unknown',
+            ExtolePersonAccounts.isEnabled() ? null : 'Unknown',
             created.Company,
             'Company is a placeholder, except where Person Accounts is on (blank so the lead converts to a Person Account)'
         );
@@ -493,10 +493,6 @@ private class ExtoleWebhookControllerTest {
     // ── Person Accounts and duplicate prevention ─────────────────────────────
     // Person Account tests skip themselves in orgs where the feature is off.
 
-    private static Boolean personAccountsEnabled() {
-        return Schema.sObjectType.Account.fields.getMap().containsKey('ispersonaccount');
-    }
-
     private static Id makePersonAccount(String email) {
         Id personRt = (Id) Database.query(
             'SELECT Id FROM RecordType WHERE SobjectType = \'Account\' AND IsPersonType = true LIMIT 1'
@@ -512,7 +508,7 @@ private class ExtoleWebhookControllerTest {
 
     @IsTest
     static void testFindRecordAccountMatchesPersonAccountByEmail() {
-        if (!personAccountsEnabled()) return;
+        if (!ExtolePersonAccounts.isEnabled()) return;
         Id accountId = makePersonAccount('person.account@example.com');
 
         SObject found = ExtoleWebhookController.findRecord('Account', 'person.account@example.com', null);
@@ -523,7 +519,7 @@ private class ExtoleWebhookControllerTest {
 
     @IsTest
     static void testAccountRuleWritesToPersonAccount() {
-        if (!personAccountsEnabled()) return;
+        if (!ExtolePersonAccounts.isEnabled()) return;
         Id accountId = makePersonAccount('writeback.pa@example.com');
         makeConfig('pa_event', 'Account', '[{"extoleKey":"note","sfdcField":"Description"}]');
         setRequest('{"event_name":"pa_event","data":{"email":"writeback.pa@example.com","note":"via account rule"}}');
@@ -540,7 +536,7 @@ private class ExtoleWebhookControllerTest {
 
     @IsTest
     static void testAccountRuleNeverCreatesRecords() {
-        if (!personAccountsEnabled()) return;
+        if (!ExtolePersonAccounts.isEnabled()) return;
         Extole_Writeback_Cfg__c cfg = makeConfig('pa_event', 'Account', '[]');
         cfg.Create_If_Not_Found__c = true;
         update cfg;
@@ -555,7 +551,7 @@ private class ExtoleWebhookControllerTest {
 
     @IsTest
     static void testLeadCreateSkippedWhenPersonAccountExists() {
-        if (!personAccountsEnabled()) return;
+        if (!ExtolePersonAccounts.isEnabled()) return;
         makePersonAccount('already.person@example.com');
         Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
         cfg.Create_If_Not_Found__c = true;
@@ -574,7 +570,7 @@ private class ExtoleWebhookControllerTest {
 
     @IsTest
     static void testCreatedLeadHasNoCompanyWhenPersonAccountsEnabled() {
-        if (!personAccountsEnabled()) return;
+        if (!ExtolePersonAccounts.isEnabled()) return;
         Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
         cfg.Create_If_Not_Found__c = true;
         update cfg;
@@ -632,6 +628,26 @@ private class ExtoleWebhookControllerTest {
             0,
             [SELECT COUNT() FROM Extole_Writeback_Lock__c],
             'Lock rows must not be left behind'
+        );
+    }
+
+    @IsTest
+    static void testBusyLockReturns503ForRetry() {
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+        insert new Extole_Writeback_Lock__c(Key__c = 'busy@example.com');
+
+        Test.startTest();
+        setRequest('{"event_name":"signed_up","data":{"email":"Busy@Example.com"}}');
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(503, RestContext.response.statusCode);
+        System.assertEquals(
+            0,
+            [SELECT COUNT() FROM Lead WHERE Email = 'busy@example.com'],
+            'A delivery that cannot take the lock must not create the record'
         );
     }
 }

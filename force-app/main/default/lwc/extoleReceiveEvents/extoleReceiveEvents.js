@@ -2,7 +2,7 @@ import { LightningElement, track } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import LightningConfirm from 'lightning/confirm';
 import getEndpointUrl from '@salesforce/apex/ExtoleWritebackController.getEndpointUrl';
-import isPersonAccountsEnabled from '@salesforce/apex/ExtoleWritebackController.isPersonAccountsEnabled';
+import isPersonAccountsEnabled from '@salesforce/apex/ExtolePersonAccounts.isEnabled';
 import getWritebackConfigs from '@salesforce/apex/ExtoleWritebackController.getWritebackConfigs';
 import saveWritebackConfig from '@salesforce/apex/ExtoleWritebackController.saveWritebackConfig';
 import deleteWritebackConfig from '@salesforce/apex/ExtoleWritebackController.deleteWritebackConfig';
