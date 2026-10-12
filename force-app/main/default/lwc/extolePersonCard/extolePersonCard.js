@@ -63,7 +63,6 @@ export default class ExtolePersonCard extends LightningElement {
     };
 
     email = null;
-    notApplicable = false;
     sfdcName = null;
     sfdcShareLink = null;
     @track configuredShareLinkField = null;
@@ -116,10 +115,8 @@ export default class ExtolePersonCard extends LightningElement {
                     data.fields.IsPersonAccount &&
                     data.fields.IsPersonAccount.value;
                 if (!isPerson) {
-                    this.notApplicable = true;
                     return;
                 }
-                this.notApplicable = false;
                 this.email = data.fields.PersonEmail
                     ? data.fields.PersonEmail.value
                     : null;

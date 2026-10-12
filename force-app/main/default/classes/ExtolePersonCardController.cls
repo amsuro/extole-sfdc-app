@@ -103,7 +103,7 @@ public with sharing class ExtolePersonCardController {
         }
         // A person account's hidden contact shares its email; link to the Account instead.
         // IsPersonAccount only exists when Person Accounts is enabled, so the query is dynamic.
-        Boolean personAccounts = Schema.sObjectType.Contact.fields.getMap().containsKey('ispersonaccount');
+        Boolean personAccounts = ExtolePersonAccounts.isEnabled();
         String contactSoql = 'SELECT Id, Email' + (personAccounts ? ', IsPersonAccount, AccountId' : '')
             + ' FROM Contact WHERE Email IN :emailSet WITH SECURITY_ENFORCED LIMIT 200';
         for (SObject c : Database.query(contactSoql)) {
