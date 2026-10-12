@@ -351,7 +351,7 @@ public with sharing class ExtolePersonCardController {
     private static Set<String> fetchFriendControllerStepNames(ExtoleConfig config, ExtoleClient client, String campaignId) {
         Set<String> names = new Set<String>();
         HttpRequest req = new HttpRequest();
-        req.setEndpoint(config.getEndpoint() + ExtoleConstants.CAMPAIGNS_PATH + '/' + campaignId + '/controllers');
+        req.setEndpoint(config.getEndpoint() + ExtoleConstants.CAMPAIGNS_PATH + '/' + campaignId + '/controllers/built');
         req.setMethod('GET');
         if (!config.isNamedCredentialMode()) req.setHeader('Authorization', config.getAuthHeader());
         req.setTimeout(config.timeoutMs);

@@ -116,7 +116,7 @@ private class ExtolePersonCardControllerTest {
                 '[{"program_label":"referral-program","campaign_id":"c1","state":"LIVE"}]'
             )
             .addPattern(
-                '/v2/campaigns/c1/controllers',
+                '/v2/campaigns/c1/controllers/built',
                 200,
                 '[{"name":"friend_signup","journey_names":["FRIEND"]}]'
             )
