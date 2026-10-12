@@ -1,5 +1,7 @@
 public class ExtoleBackfillQueueable implements Queueable, Database.AllowsCallouts {
     private static final Integer CHUNK_SIZE = 25;
+    private static final String CLOSED_WON_ACCOUNT_IDS =
+        '(SELECT AccountId FROM Opportunity WHERE StageName = \'Closed Won\' AND AccountId != null)';
 
     private Id logId;
     private String objectType;
@@ -89,7 +91,7 @@ public class ExtoleBackfillQueueable implements Queueable, Database.AllowsCallou
         List<SObject> toUpdate = new List<SObject>();
 
         for (SObject r : chunk) {
-            String email = (String) r.get('Email');
+            String email = (String) r.get(emailField());
             if (String.isBlank(email)) {
                 errorCount++;
                 errors.add(
@@ -117,7 +119,9 @@ public class ExtoleBackfillQueueable implements Queueable, Database.AllowsCallou
 
             SObject updated = objectType == 'Contact'
                 ? (SObject) new Contact(Id = (Id) r.get('Id'))
-                : (SObject) new Lead(Id = (Id) r.get('Id'));
+                : objectType == 'Account'
+                    ? (SObject) new Account(Id = (Id) r.get('Id'))
+                    : (SObject) new Lead(Id = (Id) r.get('Id'));
             updated.put(targetField, shareLink);
             toUpdate.add(updated);
             successCount++;
@@ -320,34 +324,33 @@ public class ExtoleBackfillQueueable implements Queueable, Database.AllowsCallou
         }
     }
 
+    private String emailField() {
+        return objectType == 'Account' ? 'PersonEmail' : 'Email';
+    }
+
     private List<SObject> queryNextCursorChunk() {
         try {
-            if (audienceType == 'date' && String.isNotBlank(selectedDate)) {
-                Date dateFilter = Date.valueOf(selectedDate);
-                String soql =
-                    'SELECT Id, Name, Email FROM ' +
-                    objectType +
-                    ' WHERE Email != null AND CreatedDate >= :dateFilter' +
-                    (objectType == 'Lead' ? ' AND IsConverted = false' : '') +
-                    (cursor != null ? ' AND Id > \'' + cursor + '\'' : '') +
-                    ' ORDER BY Id ASC LIMIT ' +
-                    CHUNK_SIZE;
-                return Database.query(soql);
-            }
-
-            List<String> filters = new List<String>{ 'Email != null' };
-            if (objectType == 'Contact') {
-                filters.add(
-                    'AccountId IN (SELECT AccountId FROM Opportunity WHERE StageName = \'Closed Won\' AND AccountId != null)'
-                );
-            } else {
+            List<String> filters = new List<String>{ emailField() + ' != null' };
+            if (objectType == 'Account')
+                filters.add('IsPersonAccount = true');
+            if (objectType == 'Lead')
                 filters.add('IsConverted = false');
+            Date dateFilter;
+            if (audienceType == 'date' && String.isNotBlank(selectedDate)) {
+                dateFilter = Date.valueOf(selectedDate);
+                filters.add('CreatedDate >= :dateFilter');
+            } else if (objectType == 'Contact') {
+                filters.add('AccountId IN ' + CLOSED_WON_ACCOUNT_IDS);
+            } else if (objectType == 'Account') {
+                filters.add('Id IN ' + CLOSED_WON_ACCOUNT_IDS);
             }
             if (cursor != null)
                 filters.add('Id > \'' + cursor + '\'');
 
             String soql =
-                'SELECT Id, Name, Email FROM ' +
+                'SELECT Id, Name, ' +
+                emailField() +
+                ' FROM ' +
                 objectType +
                 ' WHERE ' +
                 String.join(filters, ' AND ') +
@@ -365,6 +368,24 @@ public class ExtoleBackfillQueueable implements Queueable, Database.AllowsCallou
 
     private List<SObject> queryRecords(List<Id> ids) {
         try {
+            if (objectType == 'Account') {
+                // A person account report may list Account Ids (ACCOUNT_ID) or the person's
+                // Contact Ids (PC_CONTACT_ID). Resolve any Contact Ids to their Account.
+                Set<Id> accountIds = new Set<Id>();
+                Set<Id> contactIds = new Set<Id>();
+                for (Id i : ids) {
+                    if (i.getSobjectType() == Contact.SObjectType) contactIds.add(i);
+                    else accountIds.add(i);
+                }
+                if (!contactIds.isEmpty()) {
+                    for (Contact c : [SELECT AccountId FROM Contact WHERE Id IN :contactIds AND AccountId != null]) {
+                        accountIds.add(c.AccountId);
+                    }
+                }
+                return Database.query(
+                    'SELECT Id, Name, PersonEmail FROM Account WHERE Id IN :accountIds AND IsPersonAccount = true ORDER BY Id ASC'
+                );
+            }
             return Database.query(
                 'SELECT Id, Name, Email FROM ' +
                     objectType +

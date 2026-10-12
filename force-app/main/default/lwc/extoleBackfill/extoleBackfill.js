@@ -1,5 +1,6 @@
 import { LightningElement, track } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
+import isPersonAccountsEnabled from '@salesforce/apex/ExtolePersonAccounts.isEnabled';
 import getWritebackFields  from '@salesforce/apex/ExtoleBackfillController.getWritebackFields';
 import getShareLinkFieldSetting from '@salesforce/apex/ExtoleBackfillController.getShareLinkFieldSetting';
 import getExtoleCampaigns  from '@salesforce/apex/ExtoleBackfillController.getExtoleCampaigns';
@@ -12,6 +13,7 @@ import clearBackfillLogs   from '@salesforce/apex/ExtoleBackfillController.clear
 export default class ExtoleBackfill extends LightningElement {
 
     @track selectedObject    = 'Contact';
+    @track personAccountsEnabled = false;
     @track audienceType      = 'default';
     @track selectedDate      = null;
     @track selectedReportId  = null;
@@ -40,6 +42,7 @@ export default class ExtoleBackfill extends LightningElement {
 
     get isContact()       { return this.selectedObject === 'Contact'; }
     get isLead()          { return this.selectedObject === 'Lead'; }
+    get isAccount()       { return this.selectedObject === 'Account'; }
     get isDefaultFilter() { return this.audienceType === 'default'; }
     get isDateFilter()    { return this.audienceType === 'date'; }
     get isReportFilter()  { return this.audienceType === 'report'; }
@@ -50,19 +53,34 @@ export default class ExtoleBackfill extends LightningElement {
         return [{ label: 'None', value: '' }, ...this.campaignOptions];
     }
 
+    get objectNamePlural() {
+        if (this.selectedObject === 'Account') return 'person accounts';
+        return this.selectedObject === 'Contact' ? 'contacts' : 'leads';
+    }
+
     get shareLinkFieldLabel() {
-        return `${this.selectedObject} field`;
+        return this.selectedObject === 'Account'
+            ? 'Person Account field'
+            : `${this.selectedObject} field`;
     }
 
     get defaultFilterDescription() {
+        if (this.selectedObject === 'Account') {
+            return 'Person Accounts with an email address that have a Closed Won opportunity';
+        }
         return this.selectedObject === 'Contact'
             ? 'Contacts with an email address on accounts with any Closed Won opportunity'
             : 'Unconverted leads with an email address';
     }
 
     get dateFilterDescription() {
-        const obj = this.selectedObject === 'Contact' ? 'contacts' : 'leads';
-        return `All ${obj} with an email address created on or after a selected date`;
+        return `All ${this.objectNamePlural} with an email address created on or after a selected date`;
+    }
+
+    get reportFilterNote() {
+        return this.selectedObject === 'Account'
+            ? 'The first column must be Account ID or the Person Account contact ID.'
+            : 'The first column must be the record ID.';
     }
 
     get isRunDisabled() {
@@ -78,7 +96,7 @@ export default class ExtoleBackfill extends LightningElement {
         const count   = this.previewCountValue !== null
             ? this.previewCountValue.toLocaleString()
             : 'the matching';
-        const obj = this.selectedObject === 'Contact' ? 'contacts' : 'leads';
+        const obj = this.objectNamePlural;
         let audienceClause = '';
         if (this.audienceType === 'date' && this.selectedDate) {
             audienceClause = ` created on or after ${this.selectedDate}`;
@@ -87,6 +105,7 @@ export default class ExtoleBackfill extends LightningElement {
     }
 
     connectedCallback() {
+        this.loadPersonAccountsSupport();
         this.loadFields();
         this.loadCampaigns();
         this.loadReports();
@@ -95,6 +114,14 @@ export default class ExtoleBackfill extends LightningElement {
 
     disconnectedCallback() {
         this._stopPolling();
+    }
+
+    async loadPersonAccountsSupport() {
+        try {
+            this.personAccountsEnabled = await isPersonAccountsEnabled();
+        } catch (e) {
+            this.personAccountsEnabled = false;
+        }
     }
 
     async loadFields() {
