@@ -8,7 +8,7 @@ public class ExtoleEventFireResponse {
         }
         Map<String, Object> parsed = (Map<String, Object>) JSON.deserializeUntyped(res.getBody());
         ExtoleEventFireResponse resp = new ExtoleEventFireResponse();
-        resp.eventId = (String) parsed.get('id');
+        resp.eventId = (String) parsed.get('event_id');
         return resp;
     }
 }

@@ -133,7 +133,7 @@ sequenceDiagram
 
     Queue->>DB: query Extole_Event_Cfg__c WHERE Config_Key__c = configKey
     Queue->>DB: SOQL query triggering record (built from Field_Mappings_JSON__c)
-    Queue->>API: POST /v5/events (event payload with mapped fields)
+    Queue->>API: POST /v6/events (event payload with mapped fields)
     API-->>Queue: HTTP response
 
     Queue->>DB: update Last_Attempted_At, Last_HTTP_Status, Last_Response_Summary
