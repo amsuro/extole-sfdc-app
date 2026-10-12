@@ -371,4 +371,283 @@ private class ExtoleWebhookControllerTest {
         );
         System.assertEquals(null, result);
     }
+
+    // ── Create if not found ──────────────────────────────────────────────────
+
+    @IsTest
+    static void testCreateIfNotFoundCreatesLeadWithEmailAndFirstName() {
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+        setRequest(
+            '{"event_name":"signed_up","data":{"email":"new.friend@example.com","first_name":"Nia"}}'
+        );
+
+        Test.startTest();
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        Lead created = [
+            SELECT FirstName, LastName, Company, Email
+            FROM Lead
+            WHERE Email = 'new.friend@example.com'
+        ];
+        System.assertEquals('Nia', created.FirstName);
+        System.assertEquals('Unknown', created.LastName, 'Salesforce requires a Last Name');
+        System.assertEquals(
+            ExtolePersonAccounts.isEnabled() ? null : 'Unknown',
+            created.Company,
+            'Company is a placeholder, except where Person Accounts is on (blank so the lead converts to a Person Account)'
+        );
+        Extole_Writeback_Log__c log = [SELECT Status__c, Object_Type__c FROM Extole_Writeback_Log__c];
+        System.assertEquals('CREATED', log.Status__c);
+        System.assertEquals('Lead', log.Object_Type__c);
+    }
+
+    @IsTest
+    static void testCreateIfNotFoundCreatesContact() {
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Contact', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+        setRequest(
+            '{"event_name":"signed_up","data":{"email":"new.contact@example.com"}}'
+        );
+
+        Test.startTest();
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(
+            1,
+            [SELECT COUNT() FROM Contact WHERE Email = 'new.contact@example.com']
+        );
+    }
+
+    @IsTest
+    static void testNoCreateWhenOptionIsOff() {
+        makeConfig('signed_up', 'Lead', '[]');
+        setRequest(
+            '{"event_name":"signed_up","data":{"email":"not.created@example.com"}}'
+        );
+
+        Test.startTest();
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(
+            0,
+            [SELECT COUNT() FROM Lead WHERE Email = 'not.created@example.com']
+        );
+        System.assertEquals(
+            'SKIPPED',
+            [SELECT Status__c FROM Extole_Writeback_Log__c][0].Status__c
+        );
+    }
+
+    @IsTest
+    static void testCreateIfNotFoundUpdatesExistingRecordInsteadOfCreating() {
+        insert new Lead(LastName = 'Existing', Company = 'Acme', Email = 'existing.lead@example.com');
+        Extole_Writeback_Cfg__c cfg = makeConfig(
+            'signed_up',
+            'Lead',
+            '[{"extoleKey":"note","sfdcField":"Description"}]'
+        );
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+        setRequest(
+            '{"event_name":"signed_up","data":{"email":"existing.lead@example.com","note":"hi"}}'
+        );
+
+        Test.startTest();
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(
+            1,
+            [SELECT COUNT() FROM Lead WHERE Email = 'existing.lead@example.com']
+        );
+        System.assertEquals(
+            'hi',
+            [SELECT Description FROM Lead WHERE Email = 'existing.lead@example.com'].Description
+        );
+    }
+
+    @IsTest
+    static void testCreateUsesLastNameFromPayloadWhenSent() {
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+        setRequest(
+            '{"event_name":"signed_up","data":{"email":"full.name@example.com","first_name":"Nia","last_name":"Named"}}'
+        );
+
+        Test.startTest();
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        Lead l = [SELECT FirstName, LastName FROM Lead WHERE Email = 'full.name@example.com'];
+        System.assertEquals('Nia', l.FirstName);
+        System.assertEquals('Named', l.LastName);
+    }
+
+    // ── Person Accounts and duplicate prevention ─────────────────────────────
+    // Person Account tests skip themselves in orgs where the feature is off.
+
+    private static Id makePersonAccount(String email) {
+        Id personRt = (Id) Database.query(
+            'SELECT Id FROM RecordType WHERE SobjectType = \'Account\' AND IsPersonType = true LIMIT 1'
+        )[0].get('Id');
+        SObject pa = Schema.getGlobalDescribe().get('Account').newSObject();
+        pa.put('RecordTypeId', personRt);
+        pa.put('FirstName', 'Pat');
+        pa.put('LastName', 'Person');
+        pa.put('PersonEmail', email);
+        insert pa;
+        return (Id) pa.get('Id');
+    }
+
+    @IsTest
+    static void testFindRecordAccountMatchesPersonAccountByEmail() {
+        if (!ExtolePersonAccounts.isEnabled()) return;
+        Id accountId = makePersonAccount('person.account@example.com');
+
+        SObject found = ExtoleWebhookController.findRecord('Account', 'person.account@example.com', null);
+
+        System.assertNotEquals(null, found);
+        System.assertEquals(accountId, (Id) found.get('Id'));
+    }
+
+    @IsTest
+    static void testAccountRuleWritesToPersonAccount() {
+        if (!ExtolePersonAccounts.isEnabled()) return;
+        Id accountId = makePersonAccount('writeback.pa@example.com');
+        makeConfig('pa_event', 'Account', '[{"extoleKey":"note","sfdcField":"Description"}]');
+        setRequest('{"event_name":"pa_event","data":{"email":"writeback.pa@example.com","note":"via account rule"}}');
+
+        Test.startTest();
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        Account updated = (Account) Database.query(
+            'SELECT Id, Description FROM Account WHERE Id = \'' + accountId + '\''
+        )[0];
+        System.assertEquals('via account rule', updated.Description);
+    }
+
+    @IsTest
+    static void testAccountRuleNeverCreatesRecords() {
+        if (!ExtolePersonAccounts.isEnabled()) return;
+        Extole_Writeback_Cfg__c cfg = makeConfig('pa_event', 'Account', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+        setRequest('{"event_name":"pa_event","data":{"email":"nobody@example.com"}}');
+
+        Test.startTest();
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals('SKIPPED', [SELECT Status__c FROM Extole_Writeback_Log__c][0].Status__c);
+    }
+
+    @IsTest
+    static void testLeadCreateSkippedWhenPersonAccountExists() {
+        if (!ExtolePersonAccounts.isEnabled()) return;
+        makePersonAccount('already.person@example.com');
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+        setRequest('{"event_name":"signed_up","data":{"email":"already.person@example.com"}}');
+
+        Test.startTest();
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM Lead WHERE Email = 'already.person@example.com']);
+        Extole_Writeback_Log__c log = [SELECT Status__c, Error__c FROM Extole_Writeback_Log__c LIMIT 1];
+        System.assertEquals('SKIPPED', log.Status__c);
+        System.assert(log.Error__c.contains('already exists'));
+    }
+
+    @IsTest
+    static void testCreatedLeadHasNoCompanyWhenPersonAccountsEnabled() {
+        if (!ExtolePersonAccounts.isEnabled()) return;
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+        setRequest('{"event_name":"signed_up","data":{"email":"no.company@example.com"}}');
+
+        Test.startTest();
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(
+            null,
+            [SELECT Company FROM Lead WHERE Email = 'no.company@example.com'][0].Company,
+            'Company must stay blank so the lead converts to a Person Account'
+        );
+    }
+
+    @IsTest
+    static void testLeadCreateSkippedWhenContactExists() {
+        insert new Contact(LastName = 'Existing', Email = 'existing.contact@example.com');
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+        setRequest('{"event_name":"signed_up","data":{"email":"existing.contact@example.com"}}');
+
+        Test.startTest();
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(
+            0,
+            [SELECT COUNT() FROM Lead WHERE Email = 'existing.contact@example.com'],
+            'A Lead must not be created for an email that already has a Contact'
+        );
+    }
+
+    @IsTest
+    static void testRepeatedEventCreatesOnlyOneLead() {
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+
+        Test.startTest();
+        for (Integer i = 0; i < 3; i++) {
+            setRequest('{"event_name":"signed_up","data":{"email":"  Repeat@Example.com "}}');
+            ExtoleWebhookController.doPost();
+        }
+        Test.stopTest();
+
+        System.assertEquals(
+            1,
+            [SELECT COUNT() FROM Lead WHERE Email = 'repeat@example.com'],
+            'Repeated deliveries, even with different case or spacing, must not create duplicates'
+        );
+        System.assertEquals(
+            0,
+            [SELECT COUNT() FROM Extole_Writeback_Lock__c],
+            'Lock rows must not be left behind'
+        );
+    }
+
+    @IsTest
+    static void testBusyLockReturns503ForRetry() {
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+        insert new Extole_Writeback_Lock__c(Key__c = 'busy@example.com');
+
+        Test.startTest();
+        setRequest('{"event_name":"signed_up","data":{"email":"Busy@Example.com"}}');
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(503, RestContext.response.statusCode);
+        System.assertEquals(
+            0,
+            [SELECT COUNT() FROM Lead WHERE Email = 'busy@example.com'],
+            'A delivery that cannot take the lock must not create the record'
+        );
+    }
 }

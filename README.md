@@ -44,11 +44,12 @@ Connects Salesforce to your Extole referral program. Syncs program KPIs into Sal
 
 **Permission Sets**
 
-| Permission Set      | Assign to                                                                                     |
-| ------------------- | --------------------------------------------------------------------------------------------- |
-| `Extole_App_Admin`  | Admins configuring the integration (reports, audiences, events, writeback rules, credentials) |
-| `Extole_App_Viewer` | Users who need read access to Program Analytics and the KPI Dashboard                         |
-| `Extole_API_Access` | System/integration users — grants access to the Extole API credential only                    |
+| Permission Set               | Assign to                                                                                     |
+| ---------------------------- | --------------------------------------------------------------------------------------------- |
+| `Extole_App_Admin`           | Admins configuring the integration (reports, audiences, events, writeback rules, credentials) |
+| `Extole_App_Viewer`          | Users who need read access to Program Analytics and the KPI Dashboard                         |
+| `Extole_API_Access`          | System/integration users — grants access to the Extole API credential only                    |
+| `Extole_Webhook_Integration` | The **Run As** user of the Receive Extole Events Client Credentials app (INSTALL.md Step 10)  |
 
 **App and Tabs** — A Lightning app with seven tabs: Program Analytics, KPI Dashboard, Manage Share Links, Send Extole Events, Receive Extole Events, Configure KPIs, and Manage Audiences.
 

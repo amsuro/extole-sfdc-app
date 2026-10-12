@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Create_If_Not_Found__c</fullName>
+    <label>Create If Not Found</label>
+    <description>When no matching Lead/Contact is found by email, create a new record of Object_Type__c instead of skipping. Only enable for rules where an unmatched signup should become a new record (e.g. signed_up) — not for rules like reward_earned where a match should always already exist.</description>
+    <defaultValue>false</defaultValue>
+    <externalId>false</externalId>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <type>Checkbox</type>
+</CustomField>

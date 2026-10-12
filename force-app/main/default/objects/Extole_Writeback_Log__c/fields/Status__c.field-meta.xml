@@ -10,6 +10,7 @@
             <value><fullName>SUCCESS</fullName><default>false</default><label>SUCCESS</label></value>
             <value><fullName>FAILED</fullName><default>false</default><label>FAILED</label></value>
             <value><fullName>SKIPPED</fullName><default>false</default><label>SKIPPED</label></value>
+            <value><fullName>CREATED</fullName><default>false</default><label>CREATED</label></value>
         </valueSetDefinition>
     </valueSet>
 </CustomField>
