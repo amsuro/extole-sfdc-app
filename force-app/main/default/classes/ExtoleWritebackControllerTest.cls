@@ -91,4 +91,18 @@ private class ExtoleWritebackControllerTest {
         System.assertEquals(0, result.get('remainingCount'));
         System.assertEquals(0, [SELECT COUNT() FROM Extole_Writeback_Log__c]);
     }
+
+    @IsTest
+    static void testCreateIfNotFoundIsSavedAndReturned() {
+        Extole_Writeback_Cfg__c cfg = new Extole_Writeback_Cfg__c(
+            Event_Name__c = 'signed_up',
+            Object_Type__c = 'Lead',
+            Create_If_Not_Found__c = true
+        );
+        ExtoleWritebackController.saveWritebackConfig(cfg);
+
+        List<Extole_Writeback_Cfg__c> configs = ExtoleWritebackController.getWritebackConfigs();
+        System.assertEquals(1, configs.size());
+        System.assertEquals(true, configs[0].Create_If_Not_Found__c);
+    }
 }

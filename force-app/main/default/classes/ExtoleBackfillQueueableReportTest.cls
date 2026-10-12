@@ -221,4 +221,63 @@ private class ExtoleBackfillQueueableReportTest {
             updated.Extole_Share_Link__c
         );
     }
+
+    // ─── Person Accounts (skipped in orgs where the feature is off) ───────────
+
+    private static SObject makePersonAccount(String email) {
+        Id personRt = (Id) Database.query(
+            'SELECT Id FROM RecordType WHERE SobjectType = \'Account\' AND IsPersonType = true LIMIT 1'
+        )[0].get('Id');
+        SObject pa = Schema.getGlobalDescribe().get('Account').newSObject();
+        pa.put('RecordTypeId', personRt);
+        pa.put('FirstName', 'Pat');
+        pa.put('LastName', 'Person');
+        pa.put('PersonEmail', email);
+        insert pa;
+        return pa;
+    }
+
+    private static void runPersonAccountReport(Extole_Backfill_Log__c log, List<Id> ids) {
+        Test.setMock(HttpCalloutMock.class, new ReportAndExtoleMock(200, analyticsReportJson(ids)));
+        Test.startTest();
+        new ExtoleBackfillQueueable(
+                log.Id, 'Account', 'report', null, 'rpt123', 'Extole_Share_Link__pc', 'my-program', null
+            )
+            .execute(null);
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void testPersonAccountReportAcceptsAccountIdAndContactId() {
+        if (!ExtolePersonAccounts.isEnabled()) return;
+        SObject byAccountId = makePersonAccount('by.account.id@extole-test.com');
+        SObject byContactId = makePersonAccount('by.contact.id@extole-test.com');
+        Id contactOfSecond = (Id) Database.query(
+            'SELECT PersonContactId FROM Account WHERE Id = \'' + (Id) byContactId.get('Id') + '\''
+        )[0].get('PersonContactId');
+        Extole_Backfill_Log__c log = makeLog('Account');
+
+        runPersonAccountReport(log, new List<Id>{ (Id) byAccountId.get('Id'), contactOfSecond });
+
+        System.assertEquals(
+            2,
+            (Integer) [SELECT Success_Count__c FROM Extole_Backfill_Log__c WHERE Id = :log.Id].Success_Count__c,
+            'Both an Account Id and a Contact Id should resolve to the Person Account'
+        );
+    }
+
+    @IsTest
+    static void testPersonAccountReportSkipsBusinessAccounts() {
+        if (!ExtolePersonAccounts.isEnabled()) return;
+        Account business = new Account(Name = 'Business Co');
+        insert business;
+        Extole_Backfill_Log__c log = makeLog('Account');
+
+        runPersonAccountReport(log, new List<Id>{ business.Id });
+
+        System.assertEquals(
+            0,
+            [SELECT COUNT() FROM Extole_Backfill_Log__c WHERE Id = :log.Id AND Success_Count__c > 0]
+        );
+    }
 }

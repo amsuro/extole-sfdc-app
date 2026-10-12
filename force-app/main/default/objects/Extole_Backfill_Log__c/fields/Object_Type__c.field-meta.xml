@@ -9,6 +9,7 @@
             <sorted>false</sorted>
             <value><fullName>Contact</fullName><default>true</default><label>Contact</label></value>
             <value><fullName>Lead</fullName><default>false</default><label>Lead</label></value>
+            <value><fullName>Account</fullName><default>false</default><label>Person Account</label></value>
         </valueSetDefinition>
     </valueSet>
 </CustomField>

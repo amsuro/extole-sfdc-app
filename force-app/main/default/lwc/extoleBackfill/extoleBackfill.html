@@ -5,7 +5,7 @@
         <div class="settings-card">
             <div class="card-title-row">
                 <div class="settings-card-title">Object</div>
-                <lightning-helptext content="Choose whether to create share links for Contacts or Leads. This selection also determines which fields are available below."></lightning-helptext>
+                <lightning-helptext content="Choose whether to create share links for Contacts, Leads or Person Accounts. This selection also determines which fields are available below."></lightning-helptext>
             </div>
             <div class="slds-form-element__control radio-group-spaced">
                 <span class="slds-radio radio-with-desc">
@@ -26,6 +26,17 @@
                     </label>
                     <p class="radio-desc">Unconverted leads with an email address</p>
                 </span>
+                <template lwc:if={personAccountsEnabled}>
+                    <span class="slds-radio radio-with-desc">
+                        <input type="radio" name="objectType" id="radio-account"
+                               value="Account" checked={isAccount} onchange={handleObjectRadioChange} />
+                        <label class="slds-radio__label" for="radio-account">
+                            <span class="slds-radio_faux"></span>
+                            <span class="slds-form-element__label">Person Accounts</span>
+                        </label>
+                        <p class="radio-desc">Person Accounts with an email address</p>
+                    </span>
+                </template>
             </div>
         </div>
 
@@ -70,7 +81,7 @@
                     <label class="slds-radio__label" for="radio-report">
                         <span class="slds-radio_faux"></span>
                         <span class="slds-form-element__label">Salesforce Report</span>
-                        <span class="radio-desc">Use a saved report to target a specific audience (max 2,000 rows)</span>
+                        <span class="radio-desc">Use a saved report to target a specific audience (max 2,000 rows). {reportFilterNote}</span>
                     </label>
                     <template lwc:if={isReportFilter}>
                         <div class="radio-nested-input">

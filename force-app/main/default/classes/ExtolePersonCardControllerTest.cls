@@ -116,7 +116,7 @@ private class ExtolePersonCardControllerTest {
                 '[{"program_label":"referral-program","campaign_id":"c1","state":"LIVE"}]'
             )
             .addPattern(
-                '/v2/campaigns/c1/controllers',
+                '/v2/campaigns/c1/controllers/built',
                 200,
                 '[{"name":"friend_signup","journey_names":["FRIEND"]}]'
             )
@@ -206,5 +206,36 @@ private class ExtolePersonCardControllerTest {
         Test.stopTest();
 
         System.assertEquals(0, links.size());
+    }
+
+    @IsTest
+    static void testAttachSfdcLinksLinksPersonAccountToAccount() {
+        if (!ExtolePersonAccounts.isEnabled()) return;
+        Id personRt = (Id) Database.query(
+            'SELECT Id FROM RecordType WHERE SobjectType = \'Account\' AND IsPersonType = true LIMIT 1'
+        )[0].get('Id');
+        SObject pa = Schema.getGlobalDescribe().get('Account').newSObject();
+        pa.put('RecordTypeId', personRt);
+        pa.put('FirstName', 'Pat');
+        pa.put('LastName', 'Person');
+        pa.put('PersonEmail', 'person.account@example.com');
+        insert pa;
+
+        Test.startTest();
+        List<ExtolePersonCard.SfdcLink> links = ExtolePersonCardController.attachSfdcLinks(
+            new List<String>{ 'person.account@example.com' }
+        );
+        Test.stopTest();
+
+        System.assertEquals(1, links.size());
+        System.assertEquals('Account', links[0].objectType);
+        System.assertEquals((Id) pa.get('Id'), links[0].recordId);
+    }
+
+    @IsTest
+    static void testShareLinkFieldForAccountUsesPersonSuffix() {
+        if (!ExtolePersonAccounts.isEnabled()) return;
+        String field = ExtoleBackfillController.getShareLinkFieldSetting('Account');
+        System.assertEquals('Extole_Share_Link__pc', field);
     }
 }
