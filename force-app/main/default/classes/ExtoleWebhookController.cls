@@ -83,6 +83,17 @@ global without sharing class ExtoleWebhookController {
             return;
         }
 
+        Extole_Writeback_Lock__c lock;
+        try {
+            lock = acquireLock(email);
+        } catch (Exception e) {
+            // Another delivery for this person is still running. Ask Extole to retry rather
+            // than risk a duplicate or silently drop the event.
+            response.statusCode = 503;
+            response.responseBody = Blob.valueOf('{"error":"busy_retry"}');
+            return;
+        }
+
         List<Extole_Writeback_Log__c> logs = new List<Extole_Writeback_Log__c>();
 
         for (Extole_Writeback_Cfg__c config : configs) {
@@ -90,17 +101,6 @@ global without sharing class ExtoleWebhookController {
             String status = 'SUCCESS';
             String errDetail = null;
             String recordId = null;
-
-            Extole_Writeback_Lock__c lock = null;
-            try {
-                lock = acquireLock(email, objectType);
-            } catch (Exception e) {
-                // Another delivery for this person is still running. Ask Extole to retry rather
-                // than risk a duplicate or silently drop the event.
-                response.statusCode = 503;
-                response.responseBody = Blob.valueOf('{"error":"busy_retry"}');
-                return;
-            }
 
             try {
                 SObject record = findRecord(objectType, email, salesforceId);
@@ -140,7 +140,6 @@ global without sharing class ExtoleWebhookController {
                 status = 'FAILED';
                 errDetail = e.getMessage();
             }
-            releaseLock(lock);
 
             logs.add(
                 buildLog(
@@ -156,6 +155,7 @@ global without sharing class ExtoleWebhookController {
                 )
             );
         }
+        releaseLock(lock);
 
         if (!logs.isEmpty()) {
             try {
@@ -233,11 +233,11 @@ global without sharing class ExtoleWebhookController {
     // The unique Key__c makes a second insert for the same person wait until the first
     // transaction finishes, so the find-or-create is never run twice at once for one person.
     @TestVisible
-    private static Extole_Writeback_Lock__c acquireLock(String email, String objectType) {
+    private static Extole_Writeback_Lock__c acquireLock(String email) {
         if (String.isBlank(email))
             return null;
         Extole_Writeback_Lock__c lock = new Extole_Writeback_Lock__c(
-            Key__c = (email + '|' + objectType).toLowerCase()
+            Key__c = email.toLowerCase()
         );
         insert lock;
         return lock;
@@ -245,12 +245,8 @@ global without sharing class ExtoleWebhookController {
 
     @TestVisible
     private static void releaseLock(Extole_Writeback_Lock__c lock) {
-        if (lock != null && lock.Id != null) {
-            try {
-                delete lock;
-            } catch (Exception ignore) {
-            }
-        }
+        if (lock != null)
+            delete lock;
     }
 
     @TestVisible
@@ -258,21 +254,14 @@ global without sharing class ExtoleWebhookController {
         if (String.isBlank(email))
             return false;
         // A Person Account's hidden contact is returned here too.
-        if (![SELECT Id FROM Contact WHERE Email = :email LIMIT 1].isEmpty())
-            return true;
-        return findPersonAccount(email, null) != null;
+        return ![SELECT Id FROM Contact WHERE Email = :email LIMIT 1].isEmpty();
     }
 
     // PersonEmail and IsPersonAccount only exist when Person Accounts is enabled,
     // so these queries are dynamic and the class still compiles everywhere.
     @TestVisible
-    private static Boolean personAccountsEnabled() {
-        return Schema.sObjectType.Account.fields.getMap().containsKey('ispersonaccount');
-    }
-
-    @TestVisible
     private static SObject findPersonAccount(String email, String salesforceId) {
-        if (!personAccountsEnabled())
+        if (!ExtolePersonAccounts.isEnabled())
             return null;
         if (String.isNotBlank(salesforceId)) {
             List<SObject> r = Database.query(
@@ -309,7 +298,7 @@ global without sharing class ExtoleWebhookController {
             Lead l = new Lead(Email = email, FirstName = firstName, LastName = lastName);
             // A Lead with a Company converts to a business Account. When Person Accounts is
             // on, leave Company blank so conversion produces a Person Account.
-            if (!personAccountsEnabled())
+            if (!ExtolePersonAccounts.isEnabled())
                 l.Company = 'Unknown';
             return l;
         }

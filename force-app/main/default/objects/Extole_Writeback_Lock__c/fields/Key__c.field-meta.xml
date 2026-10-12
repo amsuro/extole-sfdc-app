@@ -7,5 +7,5 @@
     <required>true</required>
     <unique>true</unique>
     <caseSensitive>false</caseSensitive>
-    <description>Lowercase email plus object type. The unique constraint is the lock.</description>
+    <description>Lowercase email. The unique constraint is the lock.</description>
 </CustomField>
