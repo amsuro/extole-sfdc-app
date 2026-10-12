@@ -33,13 +33,6 @@ Custom Lead fields (share link, advocate code) only reach the Person Account if 
 mapped: Setup > Object Manager > Lead > Fields & Relationships > **Map Lead Fields**.
 This can't be deployed, so each org sets it once.
 
-## Who shows as the user on changes
-
-Receive Extole Events authenticates with the Client Credentials flow (INSTALL.md, Step 10),
-so records the writeback creates or updates show that app's **Run As** user (Created By,
-Last Modified By and Owner). Make the Run As user a dedicated integration user and assign
-it the **Extole Webhook Integration** permission set, so records don't show a person.
-
 ## Not covered yet
 
 - The writeback does not set Lead Source.
