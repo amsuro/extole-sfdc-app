@@ -67,7 +67,7 @@ The app uses two Named Credentials for all external callouts — no tokens are s
 
 **Salesforce Tooling API** (`Extole_Tooling`) — OAuth External Credential backed by a Connected App. Used by the Event Configurator to deploy generated Flows into the org. Requires a one-time admin OAuth authorization after setup.
 
-**Inbound webhooks (Receive Extole Events)** — Reversed direction: Extole calls _into_ Salesforce at a `@RestResource` endpoint (`/services/apexrest/extole/events`), authenticated via a Connected App using OAuth 2.0 Client Credentials. Its Consumer Key/Secret live on the Extole side (as the webhook's `CLIENT_KEY` setting), not in this package.
+**Inbound webhooks (Receive Extole Events)** — Reversed direction: Extole calls _into_ Salesforce at a `@RestResource` endpoint (`/services/apexrest/extole/events`), authenticated via a Connected App using OAuth 2.0 Client Credentials. Its Consumer Key/Secret live on the Extole side (as the **Salesforce OAuth Credentials** setting of the **Salesforce CRM** integration), not in this package.
 
 ---
 
