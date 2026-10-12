@@ -8,7 +8,7 @@ private class ExtoleEventApiTest {
     @IsTest
     static void fireEvent_happyPath() {
         Test.setMock(HttpCalloutMock.class,
-            new ExtoleConfigurableMock().withDefault(200, '{"id":"evt-abc"}'));
+            new ExtoleConfigurableMock().withDefault(200, '{"event_id":"evt-abc","person_id":"p-1"}'));
 
         Test.startTest();
         HttpResponse raw = new ExtoleClient().send(config(),
@@ -78,19 +78,6 @@ private class ExtoleEventApiTest {
         System.assert(body.contains('close_won'));
         System.assert(body.contains('test@test.com'));
         System.assertEquals('POST', req.getMethod());
-    }
-
-    @IsTest
-    static void testFireResponseReadsEventIdFromV6Response() {
-        Test.setMock(
-            HttpCalloutMock.class,
-            new ExtoleConfigurableMock().withDefault(200, '{"event_id":"evt-v6","person_id":"p-1"}')
-        );
-        HttpResponse raw = new ExtoleClient().send(
-            config(),
-            new ExtoleEventFireRequest('close_won').build(config())
-        );
-        System.assertEquals('evt-v6', ExtoleEventFireResponse.fromResponse(raw).eventId);
     }
 
     @IsTest

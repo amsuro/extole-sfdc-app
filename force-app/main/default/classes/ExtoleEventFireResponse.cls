@@ -8,8 +8,7 @@ public class ExtoleEventFireResponse {
         }
         Map<String, Object> parsed = (Map<String, Object>) JSON.deserializeUntyped(res.getBody());
         ExtoleEventFireResponse resp = new ExtoleEventFireResponse();
-        // v6 returns event_id; older responses returned id.
-        resp.eventId = (String) (parsed.containsKey('event_id') ? parsed.get('event_id') : parsed.get('id'));
+        resp.eventId = (String) parsed.get('event_id');
         return resp;
     }
 }
