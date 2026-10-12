@@ -1,6 +1,6 @@
 import { LightningElement, track } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
-import isPersonAccountsEnabled from '@salesforce/apex/ExtoleBackfillController.isPersonAccountsEnabled';
+import isPersonAccountsEnabled from '@salesforce/apex/ExtolePersonAccounts.isEnabled';
 import getWritebackFields  from '@salesforce/apex/ExtoleBackfillController.getWritebackFields';
 import getShareLinkFieldSetting from '@salesforce/apex/ExtoleBackfillController.getShareLinkFieldSetting';
 import getExtoleCampaigns  from '@salesforce/apex/ExtoleBackfillController.getExtoleCampaigns';

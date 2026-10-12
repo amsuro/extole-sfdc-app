@@ -590,10 +590,6 @@ private class ExtoleBackfillControllerTest {
 
     // ─── Person Accounts (skipped in orgs where the feature is off) ───────────
 
-    private static Boolean personAccountsEnabled() {
-        return Schema.sObjectType.Account.fields.getMap().containsKey('ispersonaccount');
-    }
-
     private static SObject makePersonAccount(String email) {
         Id personRt = (Id) Database.query(
             'SELECT Id FROM RecordType WHERE SobjectType = \'Account\' AND IsPersonType = true LIMIT 1'
@@ -617,13 +613,8 @@ private class ExtoleBackfillControllerTest {
     }
 
     @IsTest
-    static void testIsPersonAccountsEnabledMatchesOrgSetting() {
-        System.assertEquals(personAccountsEnabled(), ExtoleBackfillController.isPersonAccountsEnabled());
-    }
-
-    @IsTest
     static void testPreviewCountDateFilterPersonAccountsCountsOnlyPersonAccounts() {
-        if (!personAccountsEnabled()) return;
+        if (!ExtolePersonAccounts.isEnabled()) return;
         makePersonAccount('count.person@example.com');
         insert new Contact(LastName = 'Plain', Email = 'plain.contact@example.com');
 
@@ -636,7 +627,7 @@ private class ExtoleBackfillControllerTest {
 
     @IsTest
     static void testPreviewCountDefaultPersonAccountsRequiresClosedWonOpp() {
-        if (!personAccountsEnabled()) return;
+        if (!ExtolePersonAccounts.isEnabled()) return;
         SObject withOpp = makePersonAccount('won.person@example.com');
         makePersonAccount('no.opp.person@example.com');
         insert new Opportunity(
@@ -650,7 +641,7 @@ private class ExtoleBackfillControllerTest {
 
     @IsTest
     static void testStartBackfillPersonAccountStoresShareLinkSettingByContactName() {
-        if (!personAccountsEnabled()) return;
+        if (!ExtolePersonAccounts.isEnabled()) return;
         Test.setMock(HttpCalloutMock.class, new NotFoundMock());
 
         Test.startTest();

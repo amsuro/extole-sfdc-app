@@ -1,5 +1,7 @@
 public class ExtoleBackfillQueueable implements Queueable, Database.AllowsCallouts {
     private static final Integer CHUNK_SIZE = 25;
+    private static final String CLOSED_WON_ACCOUNT_IDS =
+        '(SELECT AccountId FROM Opportunity WHERE StageName = \'Closed Won\' AND AccountId != null)';
 
     private Id logId;
     private String objectType;
@@ -89,7 +91,7 @@ public class ExtoleBackfillQueueable implements Queueable, Database.AllowsCallou
         List<SObject> toUpdate = new List<SObject>();
 
         for (SObject r : chunk) {
-            String email = (String) r.get(objectType == 'Account' ? 'PersonEmail' : 'Email');
+            String email = (String) r.get(emailField());
             if (String.isBlank(email)) {
                 errorCount++;
                 errors.add(
@@ -322,59 +324,33 @@ public class ExtoleBackfillQueueable implements Queueable, Database.AllowsCallou
         }
     }
 
+    private String emailField() {
+        return objectType == 'Account' ? 'PersonEmail' : 'Email';
+    }
+
     private List<SObject> queryNextCursorChunk() {
         try {
-            if (objectType == 'Account') {
-                // Person Accounts only. Fields are dynamic: they exist only when the feature is on.
-                Date dateFilter = (audienceType == 'date' && String.isNotBlank(selectedDate))
-                    ? Date.valueOf(selectedDate)
-                    : null;
-                List<String> accountFilters = new List<String>{
-                    'IsPersonAccount = true',
-                    'PersonEmail != null'
-                };
-                if (dateFilter != null) {
-                    accountFilters.add('CreatedDate >= :dateFilter');
-                } else {
-                    accountFilters.add(
-                        'Id IN (SELECT AccountId FROM Opportunity WHERE StageName = \'Closed Won\' AND AccountId != null)'
-                    );
-                }
-                if (cursor != null)
-                    accountFilters.add('Id > \'' + cursor + '\'');
-                return Database.query(
-                    'SELECT Id, Name, PersonEmail FROM Account WHERE ' +
-                        String.join(accountFilters, ' AND ') +
-                        ' ORDER BY Id ASC LIMIT ' +
-                        CHUNK_SIZE
-                );
-            }
-            if (audienceType == 'date' && String.isNotBlank(selectedDate)) {
-                Date dateFilter = Date.valueOf(selectedDate);
-                String soql =
-                    'SELECT Id, Name, Email FROM ' +
-                    objectType +
-                    ' WHERE Email != null AND CreatedDate >= :dateFilter' +
-                    (objectType == 'Lead' ? ' AND IsConverted = false' : '') +
-                    (cursor != null ? ' AND Id > \'' + cursor + '\'' : '') +
-                    ' ORDER BY Id ASC LIMIT ' +
-                    CHUNK_SIZE;
-                return Database.query(soql);
-            }
-
-            List<String> filters = new List<String>{ 'Email != null' };
-            if (objectType == 'Contact') {
-                filters.add(
-                    'AccountId IN (SELECT AccountId FROM Opportunity WHERE StageName = \'Closed Won\' AND AccountId != null)'
-                );
-            } else {
+            List<String> filters = new List<String>{ emailField() + ' != null' };
+            if (objectType == 'Account')
+                filters.add('IsPersonAccount = true');
+            if (objectType == 'Lead')
                 filters.add('IsConverted = false');
+            Date dateFilter;
+            if (audienceType == 'date' && String.isNotBlank(selectedDate)) {
+                dateFilter = Date.valueOf(selectedDate);
+                filters.add('CreatedDate >= :dateFilter');
+            } else if (objectType == 'Contact') {
+                filters.add('AccountId IN ' + CLOSED_WON_ACCOUNT_IDS);
+            } else if (objectType == 'Account') {
+                filters.add('Id IN ' + CLOSED_WON_ACCOUNT_IDS);
             }
             if (cursor != null)
                 filters.add('Id > \'' + cursor + '\'');
 
             String soql =
-                'SELECT Id, Name, Email FROM ' +
+                'SELECT Id, Name, ' +
+                emailField() +
+                ' FROM ' +
                 objectType +
                 ' WHERE ' +
                 String.join(filters, ' AND ') +

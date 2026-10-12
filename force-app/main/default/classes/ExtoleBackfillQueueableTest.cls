@@ -345,10 +345,6 @@ private class ExtoleBackfillQueueableTest {
 
     // ─── Person Accounts (skipped in orgs where the feature is off) ───────────
 
-    private static Boolean personAccountsEnabled() {
-        return Schema.sObjectType.Account.fields.getMap().containsKey('ispersonaccount');
-    }
-
     private static SObject makePersonAccount(String email) {
         Id personRt = (Id) Database.query(
             'SELECT Id FROM RecordType WHERE SobjectType = \'Account\' AND IsPersonType = true LIMIT 1'
@@ -364,7 +360,7 @@ private class ExtoleBackfillQueueableTest {
 
     @IsTest
     static void testPersonAccountDateFilterWritesShareLinkToAccount() {
-        if (!personAccountsEnabled()) return;
+        if (!ExtolePersonAccounts.isEnabled()) return;
         SObject pa = makePersonAccount('happy.person@extole-test.com');
         Extole_Backfill_Log__c log = makeLog('Account');
 

@@ -127,11 +127,6 @@ public with sharing class ExtoleBackfillController {
     // Audience preview count
     // ─────────────────────────────────────────────────────────────────────────
 
-    @AuraEnabled(cacheable=true)
-    public static Boolean isPersonAccountsEnabled() {
-        return Schema.sObjectType.Account.fields.getMap().containsKey('ispersonaccount');
-    }
-
     @AuraEnabled(cacheable=false)
     public static Integer previewCount(String objectType, String audienceType, String selectedDate, String reportId) {
         if (audienceType == 'report' && String.isNotBlank(reportId)) {

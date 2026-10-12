@@ -224,10 +224,6 @@ private class ExtoleBackfillQueueableReportTest {
 
     // ─── Person Accounts (skipped in orgs where the feature is off) ───────────
 
-    private static Boolean personAccountsEnabled() {
-        return Schema.sObjectType.Account.fields.getMap().containsKey('ispersonaccount');
-    }
-
     private static SObject makePersonAccount(String email) {
         Id personRt = (Id) Database.query(
             'SELECT Id FROM RecordType WHERE SobjectType = \'Account\' AND IsPersonType = true LIMIT 1'
@@ -253,7 +249,7 @@ private class ExtoleBackfillQueueableReportTest {
 
     @IsTest
     static void testPersonAccountReportAcceptsAccountIdAndContactId() {
-        if (!personAccountsEnabled()) return;
+        if (!ExtolePersonAccounts.isEnabled()) return;
         SObject byAccountId = makePersonAccount('by.account.id@extole-test.com');
         SObject byContactId = makePersonAccount('by.contact.id@extole-test.com');
         Id contactOfSecond = (Id) Database.query(
@@ -272,7 +268,7 @@ private class ExtoleBackfillQueueableReportTest {
 
     @IsTest
     static void testPersonAccountReportSkipsBusinessAccounts() {
-        if (!personAccountsEnabled()) return;
+        if (!ExtolePersonAccounts.isEnabled()) return;
         Account business = new Account(Name = 'Business Co');
         insert business;
         Extole_Backfill_Log__c log = makeLog('Account');
