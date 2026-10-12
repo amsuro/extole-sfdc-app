@@ -10,6 +10,7 @@
             <objects>
                 <object>Lead</object>
                 <object>Contact</object>
+                <object>Account</object>
             </objects>
             <property
                 name="disabled"
@@ -22,5 +23,5 @@
     </targetConfigs>
     <masterLabel>Extole Person Card</masterLabel>
     <description
-    >Surfaces Extole referral activity for the host Lead or Contact: share links, referred friends, rewards, and inbound referrer attribution.</description>
+    >Surfaces Extole referral activity for the host Lead, Contact, or Person Account: share links, referred friends, rewards, and inbound referrer attribution.</description>
 </LightningComponentBundle>

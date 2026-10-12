@@ -101,9 +101,19 @@ public with sharing class ExtolePersonCardController {
                 match.put(key, new Map<String, String>{ 'id' => l.Id, 'type' => 'Lead' });
             }
         }
-        for (Contact c : [SELECT Id, Email FROM Contact WHERE Email IN :emailSet WITH SECURITY_ENFORCED LIMIT 200]) {
-            if (c.Email == null) continue;
-            match.put(c.Email.toLowerCase(), new Map<String, String>{ 'id' => c.Id, 'type' => 'Contact' });
+        // A person account's hidden contact shares its email; link to the Account instead.
+        // IsPersonAccount only exists when Person Accounts is enabled, so the query is dynamic.
+        Boolean personAccounts = ExtolePersonAccounts.isEnabled();
+        String contactSoql = 'SELECT Id, Email' + (personAccounts ? ', IsPersonAccount, AccountId' : '')
+            + ' FROM Contact WHERE Email IN :emailSet WITH SECURITY_ENFORCED LIMIT 200';
+        for (SObject c : Database.query(contactSoql)) {
+            String contactEmail = (String) c.get('Email');
+            if (contactEmail == null) continue;
+            Boolean isPerson = personAccounts && c.get('IsPersonAccount') == true;
+            match.put(contactEmail.toLowerCase(), new Map<String, String>{
+                'id'   => isPerson ? (String) c.get('AccountId') : (String) c.get('Id'),
+                'type' => isPerson ? 'Account' : 'Contact'
+            });
         }
         for (String k : match.keySet()) {
             ExtolePersonCard.SfdcLink link = new ExtolePersonCard.SfdcLink();

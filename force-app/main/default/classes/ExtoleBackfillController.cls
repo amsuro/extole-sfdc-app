@@ -9,6 +9,10 @@ public with sharing class ExtoleBackfillController {
         Extole_App_Settings__c s = Extole_App_Settings__c.getOrgDefaults();
         String saved = objectType == 'Lead' ? s.Lead_Share_Link_Field__c : s.Contact_Share_Link_Field__c;
         String candidate = String.isNotBlank(saved) ? saved : 'Extole_Share_Link__c';
+        // A person account exposes its contact's custom fields with a __pc suffix.
+        if (objectType == 'Account' && candidate.endsWith('__c')) {
+            candidate = candidate.removeEnd('__c') + '__pc';
+        }
         return fieldExists(objectType, candidate) ? candidate : null;
     }
 
