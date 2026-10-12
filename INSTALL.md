@@ -290,7 +290,7 @@ The **Receive Extole Events** tab lets Extole send events (e.g. a reward being e
 5. Click **Create**
 6. Open the app's row action → **Edit Policies** → under **OAuth Policies**:
     - Set **Permitted Users** to **Admin approved users are pre-authorized** — Client Credentials Flow has no interactive consent step, so without this the token exchange fails with `invalid_grant: user hasn't approved this consumer` even though every other setting is correct
-    - Under **Client Credentials Flow**, set the **Run As** user to a dedicated integration user (or an admin) — this is the Salesforce identity every inbound Extole event will execute as
+    - Under **Client Credentials Flow**, set the **Run As** user to a dedicated integration user (or an admin) and assign it the `Extole_Webhook_Integration` permission set — this is the Salesforce identity every inbound Extole event will execute as, and the user shown as Created By, Last Modified By and Owner on records the writeback creates or updates
     - Save
 7. Back on the app's **Settings** tab, under **OAuth Settings**, find the **Consumer Key** and **Consumer Secret**
 
