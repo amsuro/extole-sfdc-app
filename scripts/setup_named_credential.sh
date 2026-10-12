@@ -12,7 +12,7 @@
 # use an authorization code, so it isn't affected, and it needs no
 # interactive "Authenticate" step either.
 #
-# Run this ONCE after the initial org deploy (Step 5 in INSTALL.md).
+# Run this ONCE after the initial org deploy (Step 5 in docs/INSTALL.md).
 # Requires: sf CLI authenticated to the target org, jq, python3.
 #
 # Usage:
@@ -45,7 +45,7 @@ mkdir -p "$WORK_DIR/namedCredentials" "$WORK_DIR/permissionsets"
 
 echo "=== Step 1: Confirm External Client App exists ==="
 echo ""
-echo "Before continuing, confirm you have completed Step 4 in INSTALL.md:"
+echo "Before continuing, confirm you have completed Step 4 in docs/INSTALL.md:"
 echo "the Extole Deployer External Client App must exist in Salesforce Setup,"
 echo "with Enable JWT Bearer Flow checked."
 echo ""
@@ -123,7 +123,7 @@ echo "    Identity Provider URL:    ${ORG_DOMAIN}/services/oauth2/token"
 echo "    Issuer (iss):             ${CONSUMER_KEY}"
 echo "    Subject (sub):            the admin username who will run the Event"
 echo "                              Configurator (see the Integration User note"
-echo "                              in INSTALL.md Step 7)"
+echo "                              in docs/INSTALL.md Step 7)"
 echo "    Audience (aud):           ${ORG_DOMAIN}"
 echo "    Signing Certificate:      Extole Tooling JWT Cert"
 echo "    Signing Algorithm:        RS256 (default)"
@@ -200,7 +200,7 @@ echo ""
 echo "There's no interactive authorization step for JWT Bearer Flow — the"
 echo "credential is ready to use as soon as it's deployed."
 echo ""
-echo "Return to INSTALL.md and continue with:"
+echo "Return to docs/INSTALL.md and continue with:"
 echo "  Step 6 — Verify the Tooling credential"
 echo "  Step 7 — Assign permission sets"
 echo "  Step 8 — Launch and complete onboarding"
