@@ -27,6 +27,10 @@
         <enabled>true</enabled>
     </classAccesses>
     <classAccesses>
+        <apexClass>ExtolePersonAccounts</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <classAccesses>
         <apexClass>ExtolePersonCardController</apexClass>
         <enabled>true</enabled>
     </classAccesses>
@@ -367,6 +371,9 @@
         >true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field
         >Extole_Event_Cfg__c.Trigger_Value__c</field><readable
+        >true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field
+        >Extole_Writeback_Cfg__c.Create_If_Not_Found__c</field><readable
         >true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field
         >Extole_Writeback_Cfg__c.Description__c</field><readable

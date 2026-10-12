@@ -67,6 +67,10 @@ export default class ExtolePersonCard extends LightningElement {
     sfdcShareLink = null;
     @track configuredShareLinkField = null;
 
+    get isAccount() {
+        return this.objectApiName === 'Account';
+    }
+
     get emailField() {
         return this.objectApiName === 'Lead' ? LEAD_EMAIL : CONTACT_EMAIL;
     }
@@ -90,16 +94,39 @@ export default class ExtolePersonCard extends LightningElement {
         }
     }
 
-    @wire(getRecord, { recordId: '$recordId', fields: '$fieldsToFetch' })
+    // Account fields are referenced by string: PersonEmail and IsPersonAccount
+    // only exist when Person Accounts is enabled, so they can't be schema imports.
+    @wire(getRecord, {
+        recordId: '$recordId',
+        fields: '$requiredFields',
+        optionalFields: '$optionalFields'
+    })
     wiredRecord({ data, error }) {
         if (data) {
-            this.email = getFieldValue(data, this.emailField);
-            this.sfdcName = getFieldValue(data, this.nameField);
-            const fname = this.configuredShareLinkField;
+            const shareFieldName = this.configuredShareLinkField;
             this.sfdcShareLink =
-                fname && data.fields && data.fields[fname]
-                    ? data.fields[fname].value
+                shareFieldName &&
+                data.fields &&
+                data.fields[shareFieldName]
+                    ? data.fields[shareFieldName].value
                     : null;
+            if (this.isAccount) {
+                const isPerson =
+                    data.fields.IsPersonAccount &&
+                    data.fields.IsPersonAccount.value;
+                if (!isPerson) {
+                    return;
+                }
+                this.email = data.fields.PersonEmail
+                    ? data.fields.PersonEmail.value
+                    : null;
+                this.sfdcName = data.fields.Name
+                    ? data.fields.Name.value
+                    : null;
+            } else {
+                this.email = getFieldValue(data, this.emailField);
+                this.sfdcName = getFieldValue(data, this.nameField);
+            }
             if (this.email) {
                 this.loadCard();
             }
@@ -110,13 +137,19 @@ export default class ExtolePersonCard extends LightningElement {
         }
     }
 
-    get fieldsToFetch() {
-        const base =
-            this.objectApiName === 'Lead'
-                ? [LEAD_EMAIL, LEAD_NAME]
-                : [CONTACT_EMAIL, CONTACT_NAME];
+    get requiredFields() {
+        if (this.isAccount) return ['Account.Name'];
+        return this.objectApiName === 'Lead'
+            ? [LEAD_EMAIL, LEAD_NAME]
+            : [CONTACT_EMAIL, CONTACT_NAME];
+    }
+
+    get optionalFields() {
         const ref = this.shareLinkFieldRef;
-        return ref ? [...base, ref] : base;
+        const extra = this.isAccount
+            ? ['Account.PersonEmail', 'Account.IsPersonAccount']
+            : [];
+        return ref ? [...extra, ref] : extra;
     }
 
     async loadCard() {

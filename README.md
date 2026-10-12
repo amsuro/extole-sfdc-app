@@ -44,11 +44,12 @@ Connects Salesforce to your Extole referral program. Syncs program KPIs into Sal
 
 **Permission Sets**
 
-| Permission Set      | Assign to                                                                                     |
-| ------------------- | --------------------------------------------------------------------------------------------- |
-| `Extole_App_Admin`  | Admins configuring the integration (reports, audiences, events, writeback rules, credentials) |
-| `Extole_App_Viewer` | Users who need read access to Program Analytics and the KPI Dashboard                         |
-| `Extole_API_Access` | System/integration users — grants access to the Extole API credential only                    |
+| Permission Set               | Assign to                                                                                                       |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `Extole_App_Admin`           | Admins configuring the integration (reports, audiences, events, writeback rules, credentials)                   |
+| `Extole_App_Viewer`          | Users who need read access to Program Analytics and the KPI Dashboard                                           |
+| `Extole_API_Access`          | System/integration users — grants access to the Extole API credential only                                      |
+| `Extole_Webhook_Integration` | The **Run As** user of the Receive Extole Events Client Credentials app ([INSTALL.md](docs/INSTALL.md) Step 10) |
 
 **App and Tabs** — A Lightning app with seven tabs: Program Analytics, KPI Dashboard, Manage Share Links, Send Extole Events, Receive Extole Events, Configure KPIs, and Manage Audiences.
 
@@ -66,7 +67,7 @@ The app uses two Named Credentials for all external callouts — no tokens are s
 
 **Salesforce Tooling API** (`Extole_Tooling`) — OAuth External Credential backed by a Connected App. Used by the Event Configurator to deploy generated Flows into the org. Requires a one-time admin OAuth authorization after setup.
 
-**Inbound webhooks (Receive Extole Events)** — Reversed direction: Extole calls _into_ Salesforce at a `@RestResource` endpoint (`/services/apexrest/extole/events`), authenticated via a Connected App using OAuth 2.0 Client Credentials. Its Consumer Key/Secret live on the Extole side (as the webhook's `CLIENT_KEY` setting), not in this package.
+**Inbound webhooks (Receive Extole Events)** — Reversed direction: Extole calls _into_ Salesforce at a `@RestResource` endpoint (`/services/apexrest/extole/events`), authenticated via a Connected App using OAuth 2.0 Client Credentials. Its Consumer Key/Secret live on the Extole side (as the **Salesforce OAuth Credentials** setting of the **Salesforce CRM** integration), not in this package.
 
 ---
 
@@ -86,4 +87,4 @@ The app uses two Named Credentials for all external callouts — no tokens are s
 
 ## Installation
 
-See [INSTALL.md](INSTALL.md) for step-by-step setup instructions.
+See [INSTALL.md](docs/INSTALL.md) for step-by-step setup instructions. Orgs that use Person Accounts (for example on Financial Services Cloud) also need [PERSON_ACCOUNTS.md](docs/PERSON_ACCOUNTS.md).

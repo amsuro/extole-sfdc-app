@@ -101,9 +101,19 @@ public with sharing class ExtolePersonCardController {
                 match.put(key, new Map<String, String>{ 'id' => l.Id, 'type' => 'Lead' });
             }
         }
-        for (Contact c : [SELECT Id, Email FROM Contact WHERE Email IN :emailSet WITH SECURITY_ENFORCED LIMIT 200]) {
-            if (c.Email == null) continue;
-            match.put(c.Email.toLowerCase(), new Map<String, String>{ 'id' => c.Id, 'type' => 'Contact' });
+        // A person account's hidden contact shares its email; link to the Account instead.
+        // IsPersonAccount only exists when Person Accounts is enabled, so the query is dynamic.
+        Boolean personAccounts = ExtolePersonAccounts.isEnabled();
+        String contactSoql = 'SELECT Id, Email' + (personAccounts ? ', IsPersonAccount, AccountId' : '')
+            + ' FROM Contact WHERE Email IN :emailSet WITH SECURITY_ENFORCED LIMIT 200';
+        for (SObject c : Database.query(contactSoql)) {
+            String contactEmail = (String) c.get('Email');
+            if (contactEmail == null) continue;
+            Boolean isPerson = personAccounts && c.get('IsPersonAccount') == true;
+            match.put(contactEmail.toLowerCase(), new Map<String, String>{
+                'id'   => isPerson ? (String) c.get('AccountId') : (String) c.get('Id'),
+                'type' => isPerson ? 'Account' : 'Contact'
+            });
         }
         for (String k : match.keySet()) {
             ExtolePersonCard.SfdcLink link = new ExtolePersonCard.SfdcLink();
@@ -351,7 +361,7 @@ public with sharing class ExtolePersonCardController {
     private static Set<String> fetchFriendControllerStepNames(ExtoleConfig config, ExtoleClient client, String campaignId) {
         Set<String> names = new Set<String>();
         HttpRequest req = new HttpRequest();
-        req.setEndpoint(config.getEndpoint() + ExtoleConstants.CAMPAIGNS_PATH + '/' + campaignId + '/controllers');
+        req.setEndpoint(config.getEndpoint() + ExtoleConstants.CAMPAIGNS_PATH + '/' + campaignId + '/controllers/built');
         req.setMethod('GET');
         if (!config.isNamedCredentialMode()) req.setHeader('Authorization', config.getAuthHeader());
         req.setTimeout(config.timeoutMs);

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Extole Webhook Integration</label>
+    <description>For the Run As user of the Client Credentials app that Extole's webhook uses to POST /services/apexrest/extole/events.</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <classAccesses>
+        <apexClass>ExtoleWebhookController</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <userPermissions>
+        <name>ApiEnabled</name>
+        <enabled>true</enabled>
+    </userPermissions>
+</PermissionSet>

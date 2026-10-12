@@ -23,7 +23,8 @@ global without sharing class ExtoleWritebackController {
                 Object_Type__c,
                 Status__c,
                 Field_Mappings__c,
-                Description__c
+                Description__c,
+                Create_If_Not_Found__c
             FROM Extole_Writeback_Cfg__c
             ORDER BY Event_Name__c ASC, Object_Type__c ASC
         ];

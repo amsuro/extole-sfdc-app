@@ -277,7 +277,7 @@ The **Manage Share Links** tab generates Extole share links for existing Contact
 
 ## Step 10 — Set up Receive Extole Events (optional)
 
-The **Receive Extole Events** tab lets Extole send events (e.g. a reward being earned) into Salesforce, where they get written to a matching Contact or Lead. This direction is the reverse of everything above — Extole calls into Salesforce, so the auth setup lives on the Salesforce side, in the form of an External Client App using the Client Credentials flow, plus a matching credential stored in Extole's own Security Center.
+The **Receive Extole Events** tab lets Extole send events (e.g. an advocate creating a share link) into Salesforce, where they get written to a matching Contact or Lead. This direction is the reverse of everything above — Extole calls into Salesforce, so the auth setup lives on the Salesforce side, in the form of an External Client App using the Client Credentials flow, plus a matching credential stored in Extole's own Security Center.
 
 **In Salesforce Setup UI:**
 
@@ -290,7 +290,7 @@ The **Receive Extole Events** tab lets Extole send events (e.g. a reward being e
 5. Click **Create**
 6. Open the app's row action → **Edit Policies** → under **OAuth Policies**:
     - Set **Permitted Users** to **Admin approved users are pre-authorized** — Client Credentials Flow has no interactive consent step, so without this the token exchange fails with `invalid_grant: user hasn't approved this consumer` even though every other setting is correct
-    - Under **Client Credentials Flow**, set the **Run As** user to a dedicated integration user (or an admin) — this is the Salesforce identity every inbound Extole event will execute as
+    - Under **Client Credentials Flow**, set the **Run As** user to a dedicated integration user (or an admin) and assign it the `Extole_Webhook_Integration` permission set — this is the Salesforce identity every inbound Extole event will execute as, and the user shown as Created By, Last Modified By and Owner on records the writeback creates or updates
     - Save
 7. Back on the app's **Settings** tab, under **OAuth Settings**, find the **Consumer Key** and **Consumer Secret**
 
@@ -308,33 +308,28 @@ The **Receive Extole Events** tab lets Extole send events (e.g. a reward being e
     - **Authorization URL** — `https://<your-org-domain>.my.salesforce.com/services/oauth2/token`
     - **OAuth Client ID** — the External Client App's **Consumer Key**
 
-**Back in the Extole component's configuration:**
+**In Extole (my.extole.com → Partners):**
 
-> Steps 10-11 assume the Extole-side "Salesforce" integration component already exists for your
-> account. If it doesn't yet, it isn't something this app deploys — it lives in
-> [extole-sfdc-component](https://github.com/extole/extole-sfdc-component), which has its own
-> README covering what it is and how to install it (there's no deploy script yet, so it's a manual
-> Management API build).
+10. Install the **Salesforce CRM** integration. Set **Salesforce Endpoint URL** to the endpoint URL from step 8, and **Salesforce OAuth Credentials** to the Security Center key from step 9
+11. Turn on **Enable Salesforce Writeback**. It is **off by default**: while it is off, the integration's webhook and its share link controller are disabled, so nothing leaves the Extole platform and nothing is logged on either side. Use this toggle to pause writeback, and keep the endpoint URL and key filled in.
 
-10. Set the Security Center key from step 9 as the `CLIENT_KEY` setting, and the endpoint URL from step 8 as the webhook target setting
-11. Check the **Enable Salesforce Writeback** setting to turn on the outbound webhooks. This is **off by default** — if your account doesn't want any data written back to Salesforce, simply leave it unchecked. No request is ever built or sent while off (checked at the very start of the webhook's own script, before any reward/event data is touched), so nothing leaves the Extole platform and nothing is logged on either side — this is different from just arriving and being silently skipped.
-
-> Keep the endpoint URL and client key filled in even during testing or if you want to pause writeback for a while — use the **Enable Salesforce Writeback** toggle for that instead. Extole treats these two fields as required once the integration is active, so clearing them blocks saving further changes until they're restored.
-
-12. Click **Add Rule** under **Rules** to map incoming event fields to Contact or Lead fields — target fields must be **Text** type; `ExtoleWebhookController.applyMappings()` always writes values as strings, so a Number/Date field will silently fail to populate
-13. Trigger a test event from Extole and confirm it appears in the **Event Log** on the same tab
+12. Click **Add Rule** under **Rules**, enter `share_link_created` as the event name, and map incoming event fields to Contact or Lead fields — target fields must be **Text** type; `ExtoleWebhookController.applyMappings()` always writes values as strings, so a Number/Date field will silently fail to populate
+13. Create a share link as an advocate in Extole and confirm the `share_link_created` event appears in the **Event Log** on the same tab
 
 > Requires `Extole_App_Admin` — the underlying `ExtoleWebhookController`/`ExtoleWritebackController` classes and the `Extole_Writeback_Cfg__c`/`Extole_Writeback_Log__c` objects are only accessible to that permission set.
 
-**Sending non-reward events:** rewards flow to Salesforce automatically once writeback is on. To send other business events (a share, a referral click, a custom action), add a **Webhook** step to that event's flow in Extole and point it at the GENERIC writeback webhook. Since the webhook simply forwards whatever data is present on that step, include a `data` field on the step with the values you want written to Salesforce, for example:
+**Sending other events:** the integration sends share link events (`share_link_created`) only. To send another event (a reward, a referral click, a custom action), add a **Webhook** step to that event's flow in Extole, point it at the integration's `salesforce_crm_writeback` webhook, and set its **Webhook Body Data** to the body the endpoint expects: an `event_name` that matches a rule here, an `event_id` the endpoint uses to skip duplicates, and `email` and `salesforce_id` inside `data`, for example:
 
 ```
 javascript@runtime:(function () {
-    var person = context.getGlobalServices().getPersonService()
-        .lookupPerson().withPersonId(context.getPerson().getId()).lookup();
+    const person = context.getPerson();
     return {
-        email: person ? person.getEmail() : null,
-        salesforce_id: (person && person.data) ? person.data['salesforce_id'] : null
+        event_id: context.getStepEvent().getId(),
+        event_name: "reward_earned",
+        data: {
+            email: person.getEmail(),
+            salesforce_id: person.getData().get("salesforce_id") || null
+        }
     };
 })();
 ```
@@ -374,7 +369,7 @@ The component exposes a **Disabled** checkbox in the page's properties panel (cl
 | Extole app doesn't appear in App Launcher for a user                                                                                                     | Confirm they're assigned `Extole_App_Admin` or `Extole_App_Viewer` (Setup → Permission Sets → the set → Manage Assignments). If assigned and still missing, redeploy the permission set — its `applicationVisibilities` grant may not have deployed.                                                                                                                                             |
 | "You do not have access to the Apex class named '...'" error on any tab                                                                                  | The user's assigned permission set doesn't grant that class. Check Setup → Permission Sets → the set → Apex Class Access.                                                                                                                                                                                                                                                                        |
 | A tab renders but shows no data (e.g. "No live Extole programs found") with no explicit error                                                            | The LWC may be silently swallowing a permission exception rather than surfacing it. Check the user's actual Apex debug log (Setup → Debug Logs, add a trace flag on their user) for the real error before assuming it's a data issue — this exact symptom was caused by a missing **read** permission on the standard `UserExternalCredential` object, not by the Extole API or the data itself. |
-| Receive Extole Events shows no incoming events                                                                                                           | Confirm the Connected App's Client Credentials flow is enabled and its Consumer Key/Secret match the Extole component's `CLIENT_KEY` setting (see Step 10). Check the Event Log on the tab for delivery attempts and errors.                                                                                                                                                                     |
+| Receive Extole Events shows no incoming events                                                                                                           | Confirm the Connected App's Client Credentials flow is enabled and its Consumer Key/Secret match the Security Center key set as **Salesforce OAuth Credentials** on the **Salesforce CRM** integration (see Step 10). Check the Event Log on the tab for delivery attempts and errors.                                                                                                                                                                     |
 | Extole webhook dispatch returns `401 INVALID_SESSION_ID`, even though the Connected App's token exchange succeeds when tested directly (e.g. via `curl`) | The webhook's request script is likely built from `context.createRequestBuilder()` instead of `context.createRequestBuilderWithDefaults()` — only the latter attaches the `CLIENT_KEY`'s Authorization header. This produces a request that looks correct in every other way (right URL, right body) but is silently unauthenticated.                                                            |
 
 For detailed diagnostics, enable **Debug Logging** on the **Send Extole Events** tab and check the KPI Data Import Log on the **Configure KPIs** tab.
