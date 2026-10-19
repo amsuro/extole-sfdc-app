@@ -63,6 +63,14 @@ sf project deploy start --target-org <alias>
 
 Deploys all Apex classes, LWCs, custom objects, permission sets, and the Extole app.
 
+**First install only:** the `Extole API` External Credential and Named Credential are excluded in `.forceignore`, but the permission sets reference them, so the first deploy fails and Step 3 has nothing to configure. To create them once:
+
+1. In `.forceignore`, comment out the `**/namedCredentials/**` and `**/externalCredentials/**` lines.
+2. Run the deploy above.
+3. Put the two lines back.
+
+Don't deploy the credential files again after Step 3. A deploy resets the token to a placeholder.
+
 ---
 
 ## Step 3 — Configure the Extole API credential
