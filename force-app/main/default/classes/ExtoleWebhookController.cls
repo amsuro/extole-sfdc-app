@@ -58,7 +58,12 @@ global without sharing class ExtoleWebhookController {
         }
 
         List<Extole_Writeback_Cfg__c> configs = [
-            SELECT Id, Object_Type__c, Field_Mappings__c, Create_If_Not_Found__c
+            SELECT
+                Id,
+                Object_Type__c,
+                Field_Mappings__c,
+                Create_If_Not_Found__c,
+                Create_Only__c
             FROM Extole_Writeback_Cfg__c
             WHERE Event_Name__c = :eventName AND Status__c = 'ACTIVE'
             LIMIT 50
@@ -103,7 +108,18 @@ global without sharing class ExtoleWebhookController {
             String recordId = null;
 
             try {
-                SObject record = findRecord(objectType, email, salesforceId);
+                List<MatchField> matchFields = matchFieldsFor(
+                    config.Field_Mappings__c,
+                    data
+                );
+                SObject record = matchFields.isEmpty()
+                    ? findRecord(objectType, email, salesforceId)
+                    : findMatchingRecord(
+                          objectType,
+                          email,
+                          salesforceId,
+                          matchFields
+                      );
                 Boolean canCreate = record == null
                     && config.Create_If_Not_Found__c
                     && String.isNotBlank(email)
@@ -119,7 +135,7 @@ global without sharing class ExtoleWebhookController {
                 } else if (canCreate) {
                     record = newRecord(objectType, email, data);
                     applyMappings(record, config.Field_Mappings__c, data);
-                    insert record;
+                    insertRecord(record, !matchFields.isEmpty());
                     recordId = (String) record.get('Id');
                     status = 'CREATED';
                 } else if (record == null) {
@@ -131,6 +147,13 @@ global without sharing class ExtoleWebhookController {
                         email +
                         ' salesforceId=' +
                         salesforceId;
+                } else if (config.Create_Only__c == true) {
+                    recordId = (String) record.get('Id');
+                    status = 'SKIPPED';
+                    errDetail =
+                        'A ' +
+                        objectType +
+                        ' already matches this event, so it was left unchanged (create only)';
                 } else {
                     recordId = (String) record.get('Id');
                     applyMappings(record, config.Field_Mappings__c, data);
@@ -228,6 +251,121 @@ global without sharing class ExtoleWebhookController {
             }
         }
         return null;
+    }
+
+    // A rule with a duplicate check has decided that the same email may have more than one record
+    // (one per program and campaign), so Duplicate Rules set to "Allow with alert" must not stop
+    // the insert. Rules set to "Block" still do.
+    private static void insertRecord(SObject record, Boolean allowDuplicateAlerts) {
+        if (!allowDuplicateAlerts) {
+            insert record;
+            return;
+        }
+        Database.DMLOptions options = new Database.DMLOptions();
+        options.duplicateRuleHeader.allowSave = true;
+        Database.SaveResult result = Database.insert(record, options);
+        if (!result.isSuccess()) {
+            throw new ExtoleApiException(result.getErrors()[0].getMessage());
+        }
+    }
+
+    @TestVisible
+    private class MatchField {
+        String field;
+        String value;
+        MatchField(String field, String value) {
+            this.field = field;
+            this.value = value;
+        }
+    }
+
+    // Mapping rows flagged "match": true take part in the duplicate check. The event's value for
+    // that row is compared with the record's field, so an existing record only counts as a match
+    // when it carries the same value (for example the same program and campaign).
+    @TestVisible
+    private static List<MatchField> matchFieldsFor(
+        String mappingsJson,
+        Map<String, Object> data
+    ) {
+        List<MatchField> result = new List<MatchField>();
+        if (String.isBlank(mappingsJson))
+            return result;
+        List<Object> mappings;
+        try {
+            mappings = (List<Object>) JSON.deserializeUntyped(mappingsJson);
+        } catch (Exception e) {
+            return result;
+        }
+        for (Object m : mappings) {
+            Map<String, Object> mapping = (Map<String, Object>) m;
+            Object flag = mapping.get('match');
+            if (!(flag instanceof Boolean) || (Boolean) flag != true)
+                continue;
+            String sfdcField = (String) mapping.get('sfdcField');
+            if (String.isBlank(sfdcField))
+                continue;
+            Object value = data.get((String) mapping.get('extoleKey'));
+            result.add(
+                new MatchField(
+                    sfdcField.trim(),
+                    value == null ? null : String.valueOf(value)
+                )
+            );
+        }
+        return result;
+    }
+
+    // Finds a Lead or Contact with the event's email and the same value in every match field.
+    // Converted Leads count, so a repeat event does not create a second Lead after the first one
+    // converts. salesforce_id is not used: the same person keeps one salesforce_id across
+    // campaigns, and it would point every later campaign at the first record.
+    @TestVisible
+    private static SObject findMatchingRecord(
+        String objectType,
+        String email,
+        String salesforceId,
+        List<MatchField> matchFields
+    ) {
+        if (objectType != 'Lead' && objectType != 'Contact')
+            return findRecord(objectType, email, salesforceId);
+        if (String.isBlank(email))
+            return null;
+        Map<String, Schema.SObjectField> known = Schema.getGlobalDescribe()
+            .get(objectType)
+            .getDescribe()
+            .fields.getMap();
+        String soql = 'SELECT Id FROM ' + objectType + ' WHERE Email = :email';
+        Map<String, Object> binds = new Map<String, Object>{ 'email' => email };
+        Integer i = 0;
+        for (MatchField mf : matchFields) {
+            if (!known.containsKey(mf.field.toLowerCase())) {
+                throw new ExtoleApiException(
+                    'Duplicate check field ' +
+                        mf.field +
+                        ' does not exist on ' +
+                        objectType
+                );
+            }
+            if (!known.get(mf.field.toLowerCase()).getDescribe().isFilterable()) {
+                throw new ExtoleApiException(
+                    'Duplicate check field ' +
+                        mf.field +
+                        ' cannot be used: ' +
+                        objectType +
+                        ' queries cannot filter on it (long text fields cannot be filtered)'
+                );
+            }
+            String bind = 'v' + i++;
+            soql += ' AND ' + mf.field + ' = :' + bind;
+            binds.put(bind, mf.value);
+        }
+        soql += ' ORDER BY CreatedDate DESC LIMIT 1';
+        List<SObject> r = Database.queryWithBinds(
+            soql,
+            binds,
+            AccessLevel.SYSTEM_MODE
+        );
+        return r.isEmpty() ? null : r[0];
     }
 
     // The unique Key__c makes a second insert for the same person wait until the first
