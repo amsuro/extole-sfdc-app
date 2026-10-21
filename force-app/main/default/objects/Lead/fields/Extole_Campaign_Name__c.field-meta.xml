@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Extole_Campaign_Name__c</fullName>
+    <label>Extole Campaign Name</label>
+    <description>The Extole campaign the person was in when the record was created. Mapped by Receive Extole Events and usable as a Match field so one person can have one record per program and campaign.</description>
+    <length>255</length>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <type>Text</type>
+</CustomField>
