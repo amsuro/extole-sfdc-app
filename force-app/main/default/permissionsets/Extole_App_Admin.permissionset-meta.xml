@@ -388,9 +388,6 @@
         >Extole_Writeback_Cfg__c.Create_If_Not_Found__c</field><readable
         >true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field
-        >Extole_Writeback_Cfg__c.Create_Only__c</field><readable
-        >true</readable></fieldPermissions>
-    <fieldPermissions><editable>true</editable><field
         >Extole_Writeback_Cfg__c.Description__c</field><readable
         >true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field

@@ -199,10 +199,6 @@
     flex: 1;
 }
 
-.mapping-row .mapping-match {
-    flex: 0 0 auto;
-}
-
 .mapping-arrow {
     color: #706e6b;
     font-size: 16px;

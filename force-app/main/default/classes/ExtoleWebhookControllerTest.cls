@@ -651,86 +651,94 @@ private class ExtoleWebhookControllerTest {
         );
     }
 
-    // ─── Duplicate check (mappings marked "match") ────────────────────────────
-    // Title and Company stand in for a client's custom Program and Campaign text fields.
+    // ─── One Lead per Extole program and campaign ─────────────────────────────
 
-    private static final String MATCH_MAPPINGS =
-        '[{"extoleKey":"program_name","sfdcField":"Title","match":true},' +
-        '{"extoleKey":"campaign_name","sfdcField":"Company","match":true},' +
-        '{"extoleKey":"industry","sfdcField":"Industry"}]';
-
-    private static Extole_Writeback_Cfg__c makeMatchConfig(Boolean createOnly) {
-        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', MATCH_MAPPINGS);
+    private static void makeLeadCreateRule(String mappingsJson) {
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', mappingsJson);
         cfg.Create_If_Not_Found__c = true;
-        cfg.Create_Only__c = createOnly;
         update cfg;
-        return cfg;
     }
 
-    private static void sendSignUp(String email, String program, String campaign, String extra) {
+    private static void sendSignUp(String email, String program, String campaign) {
         setRequest(
             '{"event_name":"signed_up","data":{"email":"' + email + '","program_name":"' + program +
-            '","campaign_name":"' + campaign + '"' + extra + '}}'
+            '","campaign_name":"' + campaign + '"}}'
         );
         ExtoleWebhookController.doPost();
     }
 
     @IsTest
-    static void testMatchCreatesOneLeadPerProgramAndCampaign() {
-        makeMatchConfig(true);
+    static void testCreatedLeadStoresProgramCampaignAndDefaultLeadSource() {
+        makeLeadCreateRule('[]');
 
         Test.startTest();
-        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring', '');
-        sendSignUp('maria@example.com', 'Welcome Offer', 'Welcome Spring', '');
+        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring 2025 Referral Bonus');
         Test.stopTest();
 
-        List<Lead> leads = [SELECT Title, Company FROM Lead WHERE Email = 'maria@example.com' ORDER BY Title];
-        System.assertEquals(2, leads.size(), 'A new program and campaign for the same email gets its own Lead');
-        System.assertEquals('Refer a Friend', leads[0].Title);
-        System.assertEquals('Spring', leads[0].Company);
-        System.assertEquals('Welcome Offer', leads[1].Title);
+        Lead created = [
+            SELECT Extole_Program_Name__c, Extole_Campaign_Name__c, LeadSource
+            FROM Lead WHERE Email = 'maria@example.com'
+        ];
+        System.assertEquals('Refer a Friend', created.Extole_Program_Name__c);
+        System.assertEquals('Spring 2025 Referral Bonus', created.Extole_Campaign_Name__c);
+        System.assertEquals('Extole', created.LeadSource);
+    }
+
+    @IsTest
+    static void testNewProgramAndCampaignGetsItsOwnLead() {
+        makeLeadCreateRule('[]');
+
+        Test.startTest();
+        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring 2025 Referral Bonus');
+        sendSignUp('maria@example.com', 'Welcome Offer', 'Welcome Offer Spring Bonus');
+        Test.stopTest();
+
+        System.assertEquals(
+            2, [SELECT COUNT() FROM Lead WHERE Email = 'maria@example.com'],
+            'A new program and campaign for the same email gets its own Lead'
+        );
         System.assertEquals(2, [SELECT COUNT() FROM Extole_Writeback_Log__c WHERE Status__c = 'CREATED']);
     }
 
     @IsTest
-    static void testMatchSkipsRepeatOfSameProgramAndCampaign() {
-        makeMatchConfig(true);
+    static void testRepeatOfSameProgramAndCampaignCreatesNothing() {
+        makeLeadCreateRule('[]');
 
         Test.startTest();
-        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring', '');
-        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring', ',"industry":"Banking"');
+        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring');
+        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring');
         Test.stopTest();
 
-        List<Lead> leads = [SELECT Industry FROM Lead WHERE Email = 'maria@example.com'];
-        System.assertEquals(1, leads.size(), 'An identical program and campaign must not create another Lead');
-        System.assertEquals(null, leads[0].Industry, 'Create only must leave the existing Lead unchanged');
-        List<Extole_Writeback_Log__c> skipped = [
-            SELECT Record_Id__c, Error__c FROM Extole_Writeback_Log__c WHERE Status__c = 'SKIPPED'
-        ];
-        System.assertEquals(1, skipped.size());
-        System.assertEquals((String) leads[0].Id, skipped[0].Record_Id__c);
-        System.assert(skipped[0].Error__c.contains('already matches'));
+        System.assertEquals(
+            1, [SELECT COUNT() FROM Lead WHERE Email = 'maria@example.com'],
+            'An identical program and campaign must not create another Lead'
+        );
     }
 
     @IsTest
-    static void testMatchWithoutCreateOnlyUpdatesTheMatchingLead() {
-        makeMatchConfig(false);
+    static void testLeadFromAnotherSourceDoesNotBlockAnExtoleLead() {
+        insert new Lead(LastName = 'Web', Company = 'Acme', Email = 'maria@example.com', LeadSource = 'Web');
+        makeLeadCreateRule('[]');
 
         Test.startTest();
-        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring', '');
-        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring', ',"industry":"Banking"');
+        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring');
         Test.stopTest();
 
-        List<Lead> leads = [SELECT Industry FROM Lead WHERE Email = 'maria@example.com'];
-        System.assertEquals(1, leads.size());
-        System.assertEquals('Banking', leads[0].Industry);
+        System.assertEquals(
+            2, [SELECT COUNT() FROM Lead WHERE Email = 'maria@example.com'],
+            'A Lead with no Extole program or campaign is not a duplicate'
+        );
+        System.assertEquals(
+            1, [SELECT COUNT() FROM Lead WHERE Email = 'maria@example.com' AND LeadSource = 'Web'],
+            'The existing Web Lead stays as it was'
+        );
     }
 
     @IsTest
-    static void testMatchCountsAConvertedLead() {
+    static void testConvertedLeadCountsAsADuplicate() {
         Lead l = new Lead(
-            LastName = 'Converted', Email = 'converted@example.com',
-            Title = 'Refer a Friend', Company = 'Spring'
+            LastName = 'Converted', Company = 'Acme', Email = 'converted@example.com',
+            Extole_Program_Name__c = 'Refer a Friend', Extole_Campaign_Name__c = 'Spring'
         );
         insert l;
         Database.LeadConvert convert = new Database.LeadConvert();
@@ -738,10 +746,10 @@ private class ExtoleWebhookControllerTest {
         convert.setConvertedStatus([SELECT MasterLabel FROM LeadStatus WHERE IsConverted = true LIMIT 1].MasterLabel);
         convert.setDoNotCreateOpportunity(true);
         Database.convertLead(convert);
-        makeMatchConfig(true);
+        makeLeadCreateRule('[]');
 
         Test.startTest();
-        sendSignUp('converted@example.com', 'Refer a Friend', 'Spring', '');
+        sendSignUp('converted@example.com', 'Refer a Friend', 'Spring');
         Test.stopTest();
 
         System.assertEquals(
@@ -751,13 +759,13 @@ private class ExtoleWebhookControllerTest {
     }
 
     @IsTest
-    static void testMatchIgnoresSalesforceIdSoANewCampaignGetsItsOwnLead() {
-        makeMatchConfig(true);
+    static void testSalesforceIdDoesNotHideANewCampaign() {
         Lead first = new Lead(
-            LastName = 'First', Email = 'repeat.friend@example.com',
-            Title = 'Refer a Friend', Company = 'Spring'
+            LastName = 'First', Company = 'Acme', Email = 'repeat.friend@example.com',
+            Extole_Program_Name__c = 'Refer a Friend', Extole_Campaign_Name__c = 'Spring'
         );
         insert first;
+        makeLeadCreateRule('[]');
 
         Test.startTest();
         setRequest(
@@ -774,31 +782,32 @@ private class ExtoleWebhookControllerTest {
     }
 
     @IsTest
-    static void testMatchFieldThatDoesNotExistFailsTheRule() {
-        Extole_Writeback_Cfg__c cfg = makeConfig(
-            'signed_up', 'Lead',
-            '[{"extoleKey":"program_name","sfdcField":"Not_A_Field__c","match":true}]'
-        );
-        cfg.Create_If_Not_Found__c = true;
-        update cfg;
+    static void testExplicitLeadSourceMappingWinsOverTheDefault() {
+        makeLeadCreateRule('[{"extoleKey":"lead_source","sfdcField":"LeadSource"}]');
 
         Test.startTest();
-        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring', '');
+        setRequest(
+            '{"event_name":"signed_up","data":{"email":"maria@example.com","lead_source":"Partner Referral"}}'
+        );
+        ExtoleWebhookController.doPost();
         Test.stopTest();
 
-        Extole_Writeback_Log__c log = [SELECT Status__c, Error__c FROM Extole_Writeback_Log__c];
-        System.assertEquals('FAILED', log.Status__c);
-        System.assert(log.Error__c.contains('does not exist on Lead'));
-        System.assertEquals(0, [SELECT COUNT() FROM Lead WHERE Email = 'maria@example.com']);
+        System.assertEquals('Partner Referral', [SELECT LeadSource FROM Lead WHERE Email = 'maria@example.com'].LeadSource);
     }
 
     @IsTest
-    static void testMatchFieldsForReadsOnlyMarkedRows() {
-        List<ExtoleWebhookController.MatchField> fields = ExtoleWebhookController.matchFieldsFor(
-            MATCH_MAPPINGS, new Map<String, Object>{ 'program_name' => 'P', 'campaign_name' => 'C', 'industry' => 'I' }
+    static void testEventWithoutProgramOrCampaignStillMatchesByEmail() {
+        insert new Lead(LastName = 'Existing', Company = 'Acme', Email = 'maria@example.com');
+        makeLeadCreateRule('[]');
+
+        Test.startTest();
+        setRequest('{"event_name":"signed_up","data":{"email":"maria@example.com"}}');
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(
+            1, [SELECT COUNT() FROM Lead WHERE Email = 'maria@example.com'],
+            'Without program and campaign the rule behaves as before and finds the existing Lead by email'
         );
-        System.assertEquals(2, fields.size(), 'Only rows marked match take part');
-        System.assertEquals(0, ExtoleWebhookController.matchFieldsFor(null, new Map<String, Object>()).size());
-        System.assertEquals(0, ExtoleWebhookController.matchFieldsFor('not json', new Map<String, Object>()).size());
     }
 }

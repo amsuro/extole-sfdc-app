@@ -333,14 +333,6 @@
                             field-level-help="When no existing record has the event's email, create a new one with the email and name (if sent). Turn this on for sign-up rules. Leave it off for rules like reward_earned, where the record should already exist."
                             onchange={handleCheckboxChange}
                         ></lightning-input>
-                        <lightning-input
-                            type="checkbox"
-                            label="Leave an existing match unchanged"
-                            checked={editingConfig.Create_Only__c}
-                            data-field="Create_Only__c"
-                            field-level-help="When a record already matches this event, do nothing instead of updating it. A match is the same email, plus the same value in every mapping marked Match."
-                            onchange={handleCheckboxChange}
-                        ></lightning-input>
                     </template>
 
                     <lightning-combobox
@@ -365,7 +357,7 @@
                                 >Field Mappings</span
                             >
                             <lightning-helptext
-                                content="Each row reads a key from the Extole event's data object and writes its value to a Salesforce field on the matched record. Tick Match on a row to also require that field to have the same value when looking for an existing record, for example to allow one Lead per campaign."
+                                content="Each row reads a key from the Extole event's data object and writes its value to a Salesforce field on the matched record."
                             ></lightning-helptext>
                         </div>
                         <template for:each={mappingRows} for:item="row">
@@ -390,15 +382,6 @@
                                     placeholder="e.g. Extole_Reward_Value__c"
                                     variant="label-hidden"
                                     onchange={handleMappingChange}
-                                ></lightning-input>
-                                <lightning-input
-                                    type="checkbox"
-                                    class="mapping-match"
-                                    label="Match"
-                                    checked={row.match}
-                                    data-row-id={row.rowId}
-                                    title="Only treat an existing record as a match when this field has the same value as the event"
-                                    onchange={handleMatchChange}
                                 ></lightning-input>
                                 <lightning-button-icon
                                     icon-name="utility:delete"

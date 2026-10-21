@@ -310,8 +310,7 @@ export default class ExtoleReceiveEvents extends LightningElement {
                     this.mappingRows = parsed.map((m) => ({
                         rowId: newRowId(),
                         extoleKey: m.extoleKey || '',
-                        sfdcField: m.sfdcField || '',
-                        match: m.match === true
+                        sfdcField: m.sfdcField || ''
                     }));
                 }
             } catch {
@@ -391,16 +390,8 @@ export default class ExtoleReceiveEvents extends LightningElement {
     handleAddMapping() {
         this.mappingRows = [
             ...this.mappingRows,
-            { rowId: newRowId(), extoleKey: '', sfdcField: '', match: false }
+            { rowId: newRowId(), extoleKey: '', sfdcField: '' }
         ];
-    }
-
-    handleMatchChange(event) {
-        const rowId = event.currentTarget.dataset.rowId;
-        const checked = event.target.checked;
-        this.mappingRows = this.mappingRows.map((r) =>
-            r.rowId === rowId ? { ...r, match: checked } : r
-        );
     }
 
     handleRemoveMapping(event) {
@@ -425,14 +416,10 @@ export default class ExtoleReceiveEvents extends LightningElement {
         const mappingsJson =
             validRows.length > 0
                 ? JSON.stringify(
-                      validRows.map((r) => {
-                          const mapping = {
-                              extoleKey: r.extoleKey.trim(),
-                              sfdcField: r.sfdcField.trim()
-                          };
-                          if (r.match) mapping.match = true;
-                          return mapping;
-                      })
+                      validRows.map((r) => ({
+                          extoleKey: r.extoleKey.trim(),
+                          sfdcField: r.sfdcField.trim()
+                      }))
                   )
                 : null;
 
