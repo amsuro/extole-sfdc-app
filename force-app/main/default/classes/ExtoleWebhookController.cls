@@ -87,6 +87,10 @@ global without sharing class ExtoleWebhookController {
             return;
         }
 
+        // The campaign name is looked up before any DML: Salesforce does not allow a callout
+        // after the lock insert in the same request.
+        String campaignNameNote = resolveCampaignName(configs, data);
+
         Extole_Writeback_Lock__c lock;
         try {
             lock = acquireLock(email);
@@ -134,7 +138,10 @@ global without sharing class ExtoleWebhookController {
                     applyMappings(record, config.Field_Mappings__c, data);
                     if (tracksSource)
                         setExtoleSource(record, program, campaign);
-                    errDetail = insertWithLeadSource(record, tracksSource);
+                    errDetail = appendNote(
+                        insertWithLeadSource(record, tracksSource),
+                        campaignNameNote
+                    );
                     recordId = (String) record.get('Id');
                     status = 'CREATED';
                 } else if (record == null) {
@@ -243,6 +250,71 @@ global without sharing class ExtoleWebhookController {
             }
         }
         return null;
+    }
+
+    // Extole sends campaign_id because the integration's script cannot read a campaign's name.
+    // For a Lead rule that creates records, look the name up so the Lead stores something a
+    // person can read. If the lookup fails the ID is stored instead, and the log says so.
+    @TestVisible
+    private static String resolveCampaignName(
+        List<Extole_Writeback_Cfg__c> configs,
+        Map<String, Object> data
+    ) {
+        if (sourceValue(data, 'campaign_name') != null)
+            return null;
+        String campaignId = sourceValue(data, 'campaign_id');
+        if (campaignId == null)
+            return null;
+        Boolean needed = false;
+        for (Extole_Writeback_Cfg__c config : configs) {
+            if (config.Create_If_Not_Found__c == true && config.Object_Type__c == 'Lead')
+                needed = true;
+        }
+        if (!needed)
+            return null;
+        String name = lookupCampaignName(campaignId);
+        if (name == null) {
+            data.put('campaign_name', campaignId);
+            return 'The campaign name could not be looked up, so the campaign ID was stored';
+        }
+        data.put('campaign_name', name);
+        return null;
+    }
+
+    @TestVisible
+    private static String lookupCampaignName(String campaignId) {
+        try {
+            HttpRequest request = new HttpRequest();
+            request.setEndpoint(
+                'callout:Extole_API/v2/campaign-summaries/' +
+                EncodingUtil.urlEncode(campaignId, 'UTF-8')
+            );
+            request.setMethod('GET');
+            request.setTimeout(10000);
+            HttpResponse response = new Http().send(request);
+            if (response.getStatusCode() != 200)
+                return null;
+            Map<String, Object> body = (Map<String, Object>) JSON.deserializeUntyped(
+                response.getBody()
+            );
+            Object name = body.containsKey('campaign_name')
+                ? body.get('campaign_name')
+                : body.get('name');
+            return name == null || String.isBlank(String.valueOf(name))
+                ? null
+                : String.valueOf(name).trim();
+        } catch (Exception e) {
+            System.debug(
+                'ExtoleWebhookController.lookupCampaignName: ' + e.getMessage()
+            );
+            return null;
+        }
+    }
+
+    private static String appendNote(String existing, String note) {
+        if (note == null)
+            return existing;
+        return existing == null ? note : existing + '; ' + note;
     }
 
     private static String sourceValue(Map<String, Object> data, String key) {

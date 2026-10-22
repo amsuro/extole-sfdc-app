@@ -810,4 +810,84 @@ private class ExtoleWebhookControllerTest {
             'Without program and campaign the rule behaves as before and finds the existing Lead by email'
         );
     }
+
+    // ─── Campaign name lookup ─────────────────────────────────────────────────
+
+    private class CampaignSummaryMock implements HttpCalloutMock {
+        Integer status;
+        String body;
+        CampaignSummaryMock(Integer status, String body) {
+            this.status = status;
+            this.body = body;
+        }
+        public HttpResponse respond(HttpRequest request) {
+            System.assert(request.getEndpoint().contains('/v2/campaign-summaries/'));
+            HttpResponse response = new HttpResponse();
+            response.setStatusCode(status);
+            response.setBody(body);
+            return response;
+        }
+    }
+
+    private static void sendSignUpWithCampaignId(String campaignNameJson) {
+        setRequest(
+            '{"event_name":"signed_up","data":{"email":"maria@example.com","program_name":"refer-a-friend",' +
+            '"campaign_id":"7688479679926788624"' + campaignNameJson + '}}'
+        );
+        ExtoleWebhookController.doPost();
+    }
+
+    @IsTest
+    static void testCampaignNameIsLookedUpFromTheCampaignId() {
+        makeLeadCreateRule('[]');
+        Test.setMock(
+            HttpCalloutMock.class,
+            new CampaignSummaryMock(200, '{"campaign_id":"7688479679926788624","campaign_name":"Refer a Friend - Salesforce CRM"}')
+        );
+
+        Test.startTest();
+        sendSignUpWithCampaignId('');
+        Test.stopTest();
+
+        Lead created = [
+            SELECT Extole_Program_Name__c, Extole_Campaign_Name__c FROM Lead WHERE Email = 'maria@example.com'
+        ];
+        System.assertEquals('refer-a-friend', created.Extole_Program_Name__c);
+        System.assertEquals('Refer a Friend - Salesforce CRM', created.Extole_Campaign_Name__c);
+    }
+
+    @IsTest
+    static void testCampaignIdIsStoredWhenTheLookupFails() {
+        makeLeadCreateRule('[]');
+        Test.setMock(HttpCalloutMock.class, new CampaignSummaryMock(404, '{}'));
+
+        Test.startTest();
+        sendSignUpWithCampaignId('');
+        Test.stopTest();
+
+        System.assertEquals(
+            '7688479679926788624',
+            [SELECT Extole_Campaign_Name__c FROM Lead WHERE Email = 'maria@example.com'].Extole_Campaign_Name__c,
+            'The sign-up must not be lost when the name cannot be looked up'
+        );
+        Extole_Writeback_Log__c log = [SELECT Status__c, Error__c FROM Extole_Writeback_Log__c];
+        System.assertEquals('CREATED', log.Status__c);
+        System.assert(log.Error__c.contains('could not be looked up'));
+    }
+
+    @IsTest
+    static void testNoLookupWhenTheCampaignNameIsAlreadySent() {
+        makeLeadCreateRule('[]');
+        // A failing mock would change the stored value if the lookup ran.
+        Test.setMock(HttpCalloutMock.class, new CampaignSummaryMock(404, '{}'));
+
+        Test.startTest();
+        sendSignUpWithCampaignId(',"campaign_name":"Spring Bonus"');
+        Test.stopTest();
+
+        System.assertEquals(
+            'Spring Bonus',
+            [SELECT Extole_Campaign_Name__c FROM Lead WHERE Email = 'maria@example.com'].Extole_Campaign_Name__c
+        );
+    }
 }
