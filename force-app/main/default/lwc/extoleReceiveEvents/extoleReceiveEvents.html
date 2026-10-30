@@ -335,6 +335,17 @@
                         ></lightning-input>
                     </template>
 
+                    <template lwc:if={showLeadForExistingPersonOption}>
+                        <lightning-input
+                            type="checkbox"
+                            label="Create a Lead even if a Contact or Person Account has this email"
+                            checked={editingConfig.Create_Lead_If_Contact_Exists__c}
+                            data-field="Create_Lead_If_Contact_Exists__c"
+                            field-level-help="Off: the event is skipped when a Contact or Person Account already has the email. On: a Lead is still created for a new program or campaign. A repeat of the same program and campaign never creates a second Lead."
+                            onchange={handleCheckboxChange}
+                        ></lightning-input>
+                    </template>
+
                     <lightning-combobox
                         label="Status"
                         value={editingConfig.Status__c}

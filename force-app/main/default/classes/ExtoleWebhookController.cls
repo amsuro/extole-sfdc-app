@@ -62,7 +62,8 @@ global without sharing class ExtoleWebhookController {
                 Id,
                 Object_Type__c,
                 Field_Mappings__c,
-                Create_If_Not_Found__c
+                Create_If_Not_Found__c,
+                Create_Lead_If_Contact_Exists__c
             FROM Extole_Writeback_Cfg__c
             WHERE Event_Name__c = :eventName AND Status__c = 'ACTIVE'
             LIMIT 50
@@ -107,8 +108,6 @@ global without sharing class ExtoleWebhookController {
             String recordId = null;
 
             try {
-                // Extole's Lead rules that create records also tell Leads apart by program and
-                // campaign, so a person referred in two campaigns gets one Lead for each.
                 String program = sourceValue(data, 'program_name');
                 String campaign = sourceValue(data, 'campaign_name');
                 Boolean tracksSource = config.Create_If_Not_Found__c == true
@@ -117,11 +116,24 @@ global without sharing class ExtoleWebhookController {
                 SObject record = tracksSource
                     ? findByExtoleSource(email, program, campaign)
                     : findRecord(objectType, email, salesforceId);
+                Boolean convertedMatch = record != null
+                    && tracksSource
+                    && (Boolean) record.get('IsConverted') == true;
                 Boolean canCreate = record == null
                     && config.Create_If_Not_Found__c
                     && String.isNotBlank(email)
                     && objectType != 'Account';
-                if (canCreate && personAlreadyExists(email)) {
+                Boolean allowLeadForExistingPerson = objectType == 'Lead'
+                    && config.Create_Lead_If_Contact_Exists__c == true;
+                if (convertedMatch) {
+                    recordId = (String) record.get('Id');
+                    status = 'SKIPPED';
+                    errDetail = 'A Lead for this email, program and campaign was already created and has been converted, so no new Lead was created';
+                } else if (
+                    canCreate &&
+                    !allowLeadForExistingPerson &&
+                    personAlreadyExists(email)
+                ) {
                     // Creating a Lead/Contact here would duplicate an existing person.
                     status = 'SKIPPED';
                     errDetail =
@@ -134,7 +146,7 @@ global without sharing class ExtoleWebhookController {
                     applyMappings(record, config.Field_Mappings__c, data);
                     if (tracksSource)
                         setExtoleSource(record, program, campaign);
-                    errDetail = insertWithLeadSource(record, tracksSource);
+                    insertWithLeadSource(record, tracksSource);
                     recordId = (String) record.get('Id');
                     status = 'CREATED';
                 } else if (record == null) {
@@ -252,11 +264,7 @@ global without sharing class ExtoleWebhookController {
         return String.valueOf(value).trim();
     }
 
-    // Finds a Lead with the event's email and the same Extole program and campaign (whichever
-    // the event sends). Converted Leads count, so a repeat event does not create a second Lead
-    // after the first one converts. A Lead from another source has no Extole program or
-    // campaign, so it never matches. salesforce_id is not used here: the same person keeps one
-    // salesforce_id across campaigns, and it would point every later campaign at the first Lead.
+    // salesforce_id is ignored on purpose: one person keeps one id across campaigns.
     @TestVisible
     private static SObject findByExtoleSource(
         String email,
@@ -265,7 +273,7 @@ global without sharing class ExtoleWebhookController {
     ) {
         if (String.isBlank(email))
             return null;
-        String soql = 'SELECT Id FROM Lead WHERE Email = :email';
+        String soql = 'SELECT Id, IsConverted FROM Lead WHERE Email = :email';
         Map<String, Object> binds = new Map<String, Object>{ 'email' => email };
         if (program != null) {
             soql += ' AND Extole_Program_Name__c = :program';
@@ -295,32 +303,13 @@ global without sharing class ExtoleWebhookController {
             record.put('Extole_Campaign_Name__c', campaign);
     }
 
-    // Records the app creates get Lead Source "Extole" unless a mapping already set one. When the
-    // org's Lead Source list does not allow "Extole", the record is created with no Lead Source
-    // and the log says so, rather than losing the sign-up.
-    // allowDuplicateAlerts: a Lead told apart by program and campaign may share an email with
-    // another Lead, so Duplicate Rules set to "Allow with alert" must not stop the insert.
-    // Rules set to "Block" still do.
-    private static String insertWithLeadSource(
+    private static void insertWithLeadSource(
         SObject record,
         Boolean allowDuplicateAlerts
     ) {
         if (record.get('LeadSource') == null)
             record.put('LeadSource', 'Extole');
-        try {
-            insertRecord(record, allowDuplicateAlerts);
-            return null;
-        } catch (Exception e) {
-            if (
-                (String) record.get('LeadSource') != 'Extole' ||
-                !e.getMessage().containsIgnoreCase('restricted picklist')
-            ) {
-                throw e;
-            }
-            record.put('LeadSource', null);
-            insertRecord(record, allowDuplicateAlerts);
-            return 'Created without a Lead Source: "Extole" is not an allowed Lead Source value in this org';
-        }
+        insertRecord(record, allowDuplicateAlerts);
     }
 
     private static void insertRecord(SObject record, Boolean allowDuplicateAlerts) {

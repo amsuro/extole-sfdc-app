@@ -756,6 +756,60 @@ private class ExtoleWebhookControllerTest {
             1, [SELECT COUNT() FROM Lead WHERE Email = 'converted@example.com'],
             'A converted Lead with the same program and campaign still counts as a duplicate'
         );
+        Extole_Writeback_Log__c log = [SELECT Status__c, Error__c, Record_Id__c FROM Extole_Writeback_Log__c];
+        System.assertEquals('SKIPPED', log.Status__c, 'A converted Lead cannot be updated, so the event is skipped, not failed');
+        System.assert(log.Error__c.contains('converted'));
+        System.assertEquals((String) l.Id, log.Record_Id__c);
+    }
+
+    @IsTest
+    static void testContactDoesNotBlockANewProgramWhenTheSettingIsOn() {
+        insert new Contact(LastName = 'Member', Email = 'member@example.com');
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        cfg.Create_Lead_If_Contact_Exists__c = true;
+        update cfg;
+
+        Test.startTest();
+        sendSignUp('member@example.com', 'Welcome Offer', 'Welcome Spring');
+        Test.stopTest();
+
+        System.assertEquals(
+            1, [SELECT COUNT() FROM Lead WHERE Email = 'member@example.com'],
+            'With the setting on, an existing Contact does not stop a new Lead'
+        );
+    }
+
+    @IsTest
+    static void testContactBlocksANewLeadWhenTheSettingIsOff() {
+        insert new Contact(LastName = 'Member', Email = 'member@example.com');
+        makeLeadCreateRule('[]');
+
+        Test.startTest();
+        sendSignUp('member@example.com', 'Welcome Offer', 'Welcome Spring');
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM Lead WHERE Email = 'member@example.com']);
+        System.assertEquals('SKIPPED', [SELECT Status__c FROM Extole_Writeback_Log__c].Status__c);
+    }
+
+    @IsTest
+    static void testRepeatOfTheSameProgramNeverCreatesASecondLeadEvenWithTheSettingOn() {
+        insert new Contact(LastName = 'Member', Email = 'member@example.com');
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        cfg.Create_Lead_If_Contact_Exists__c = true;
+        update cfg;
+
+        Test.startTest();
+        sendSignUp('member@example.com', 'Refer a Friend', 'Spring');
+        sendSignUp('member@example.com', 'Refer a Friend', 'Spring');
+        Test.stopTest();
+
+        System.assertEquals(
+            1, [SELECT COUNT() FROM Lead WHERE Email = 'member@example.com'],
+            'A repeat of the same program and campaign is a duplicate, whatever the setting'
+        );
     }
 
     @IsTest
