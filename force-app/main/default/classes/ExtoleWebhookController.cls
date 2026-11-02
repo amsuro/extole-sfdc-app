@@ -123,7 +123,7 @@ global without sharing class ExtoleWebhookController {
                     && config.Create_If_Not_Found__c
                     && String.isNotBlank(email)
                     && objectType != 'Account';
-                Boolean allowLeadForExistingPerson = objectType == 'Lead'
+                Boolean allowLeadForExistingPerson = tracksSource
                     && config.Create_Lead_If_Contact_Exists__c == true;
                 if (convertedMatch) {
                     recordId = (String) record.get('Id');
@@ -264,7 +264,6 @@ global without sharing class ExtoleWebhookController {
         return String.valueOf(value).trim();
     }
 
-    // salesforce_id is ignored on purpose: one person keeps one id across campaigns.
     @TestVisible
     private static SObject findByExtoleSource(
         String email,

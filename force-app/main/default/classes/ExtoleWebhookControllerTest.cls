@@ -794,6 +794,26 @@ private class ExtoleWebhookControllerTest {
     }
 
     @IsTest
+    static void testContactBlocksALeadWithoutProgramOrCampaignEvenWithTheSettingOn() {
+        insert new Contact(LastName = 'Member', Email = 'member@example.com');
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        cfg.Create_Lead_If_Contact_Exists__c = true;
+        update cfg;
+
+        Test.startTest();
+        setRequest('{"event_name":"signed_up","data":{"email":"member@example.com"}}');
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(
+            0, [SELECT COUNT() FROM Lead WHERE Email = 'member@example.com'],
+            'Without a program or campaign there is nothing new, so the setting does not apply'
+        );
+        System.assertEquals('SKIPPED', [SELECT Status__c FROM Extole_Writeback_Log__c].Status__c);
+    }
+
+    @IsTest
     static void testRepeatOfTheSameProgramNeverCreatesASecondLeadEvenWithTheSettingOn() {
         insert new Contact(LastName = 'Member', Email = 'member@example.com');
         Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
