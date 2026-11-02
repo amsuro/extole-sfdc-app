@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Extole_Campaign_Name__c</fullName>
+    <label>Extole Campaign Name</label>
+    <description>The Extole campaign name carried over from the Lead when it converts, if Map Lead Fields maps it. The app does not write this field.</description>
+    <length>255</length>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <type>Text</type>
+</CustomField>

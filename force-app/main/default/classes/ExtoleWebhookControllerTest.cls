@@ -650,4 +650,238 @@ private class ExtoleWebhookControllerTest {
             'A delivery that cannot take the lock must not create the record'
         );
     }
+
+    // ─── One Lead per Extole program and campaign ─────────────────────────────
+
+    private static void makeLeadCreateRule(String mappingsJson) {
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', mappingsJson);
+        cfg.Create_If_Not_Found__c = true;
+        update cfg;
+    }
+
+    private static void sendSignUp(String email, String program, String campaign) {
+        setRequest(
+            '{"event_name":"signed_up","data":{"email":"' + email + '","program_name":"' + program +
+            '","campaign_name":"' + campaign + '"}}'
+        );
+        ExtoleWebhookController.doPost();
+    }
+
+    @IsTest
+    static void testCreatedLeadStoresProgramCampaignAndDefaultLeadSource() {
+        makeLeadCreateRule('[]');
+
+        Test.startTest();
+        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring 2025 Referral Bonus');
+        Test.stopTest();
+
+        Lead created = [
+            SELECT Extole_Program_Name__c, Extole_Campaign_Name__c, LeadSource
+            FROM Lead WHERE Email = 'maria@example.com'
+        ];
+        System.assertEquals('Refer a Friend', created.Extole_Program_Name__c);
+        System.assertEquals('Spring 2025 Referral Bonus', created.Extole_Campaign_Name__c);
+        System.assertEquals('Extole', created.LeadSource);
+    }
+
+    @IsTest
+    static void testNewProgramAndCampaignGetsItsOwnLead() {
+        makeLeadCreateRule('[]');
+
+        Test.startTest();
+        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring 2025 Referral Bonus');
+        sendSignUp('maria@example.com', 'Welcome Offer', 'Welcome Offer Spring Bonus');
+        Test.stopTest();
+
+        System.assertEquals(
+            2, [SELECT COUNT() FROM Lead WHERE Email = 'maria@example.com'],
+            'A new program and campaign for the same email gets its own Lead'
+        );
+        System.assertEquals(2, [SELECT COUNT() FROM Extole_Writeback_Log__c WHERE Status__c = 'CREATED']);
+    }
+
+    @IsTest
+    static void testRepeatOfSameProgramAndCampaignCreatesNothing() {
+        makeLeadCreateRule('[]');
+
+        Test.startTest();
+        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring');
+        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring');
+        Test.stopTest();
+
+        System.assertEquals(
+            1, [SELECT COUNT() FROM Lead WHERE Email = 'maria@example.com'],
+            'An identical program and campaign must not create another Lead'
+        );
+    }
+
+    @IsTest
+    static void testLeadFromAnotherSourceDoesNotBlockAnExtoleLead() {
+        insert new Lead(LastName = 'Web', Company = 'Acme', Email = 'maria@example.com', LeadSource = 'Web');
+        makeLeadCreateRule('[]');
+
+        Test.startTest();
+        sendSignUp('maria@example.com', 'Refer a Friend', 'Spring');
+        Test.stopTest();
+
+        System.assertEquals(
+            2, [SELECT COUNT() FROM Lead WHERE Email = 'maria@example.com'],
+            'A Lead with no Extole program or campaign is not a duplicate'
+        );
+        System.assertEquals(
+            1, [SELECT COUNT() FROM Lead WHERE Email = 'maria@example.com' AND LeadSource = 'Web'],
+            'The existing Web Lead stays as it was'
+        );
+    }
+
+    @IsTest
+    static void testConvertedLeadCountsAsADuplicate() {
+        Lead l = new Lead(
+            LastName = 'Converted', Company = 'Acme', Email = 'converted@example.com',
+            Extole_Program_Name__c = 'Refer a Friend', Extole_Campaign_Name__c = 'Spring'
+        );
+        insert l;
+        Database.LeadConvert convert = new Database.LeadConvert();
+        convert.setLeadId(l.Id);
+        convert.setConvertedStatus([SELECT MasterLabel FROM LeadStatus WHERE IsConverted = true LIMIT 1].MasterLabel);
+        convert.setDoNotCreateOpportunity(true);
+        Database.convertLead(convert);
+        makeLeadCreateRule('[]');
+
+        Test.startTest();
+        sendSignUp('converted@example.com', 'Refer a Friend', 'Spring');
+        Test.stopTest();
+
+        System.assertEquals(
+            1, [SELECT COUNT() FROM Lead WHERE Email = 'converted@example.com'],
+            'A converted Lead with the same program and campaign still counts as a duplicate'
+        );
+        Extole_Writeback_Log__c log = [SELECT Status__c, Error__c, Record_Id__c FROM Extole_Writeback_Log__c];
+        System.assertEquals('SKIPPED', log.Status__c, 'A converted Lead cannot be updated, so the event is skipped, not failed');
+        System.assert(log.Error__c.contains('converted'));
+        System.assertEquals((String) l.Id, log.Record_Id__c);
+    }
+
+    @IsTest
+    static void testContactDoesNotBlockANewProgramWhenTheSettingIsOn() {
+        insert new Contact(LastName = 'Member', Email = 'member@example.com');
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        cfg.Create_Lead_If_Contact_Exists__c = true;
+        update cfg;
+
+        Test.startTest();
+        sendSignUp('member@example.com', 'Welcome Offer', 'Welcome Spring');
+        Test.stopTest();
+
+        System.assertEquals(
+            1, [SELECT COUNT() FROM Lead WHERE Email = 'member@example.com'],
+            'With the setting on, an existing Contact does not stop a new Lead'
+        );
+    }
+
+    @IsTest
+    static void testContactBlocksANewLeadWhenTheSettingIsOff() {
+        insert new Contact(LastName = 'Member', Email = 'member@example.com');
+        makeLeadCreateRule('[]');
+
+        Test.startTest();
+        sendSignUp('member@example.com', 'Welcome Offer', 'Welcome Spring');
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM Lead WHERE Email = 'member@example.com']);
+        System.assertEquals('SKIPPED', [SELECT Status__c FROM Extole_Writeback_Log__c].Status__c);
+    }
+
+    @IsTest
+    static void testContactBlocksALeadWithoutProgramOrCampaignEvenWithTheSettingOn() {
+        insert new Contact(LastName = 'Member', Email = 'member@example.com');
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        cfg.Create_Lead_If_Contact_Exists__c = true;
+        update cfg;
+
+        Test.startTest();
+        setRequest('{"event_name":"signed_up","data":{"email":"member@example.com"}}');
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(
+            0, [SELECT COUNT() FROM Lead WHERE Email = 'member@example.com'],
+            'Without a program or campaign there is nothing new, so the setting does not apply'
+        );
+        System.assertEquals('SKIPPED', [SELECT Status__c FROM Extole_Writeback_Log__c].Status__c);
+    }
+
+    @IsTest
+    static void testRepeatOfTheSameProgramNeverCreatesASecondLeadEvenWithTheSettingOn() {
+        insert new Contact(LastName = 'Member', Email = 'member@example.com');
+        Extole_Writeback_Cfg__c cfg = makeConfig('signed_up', 'Lead', '[]');
+        cfg.Create_If_Not_Found__c = true;
+        cfg.Create_Lead_If_Contact_Exists__c = true;
+        update cfg;
+
+        Test.startTest();
+        sendSignUp('member@example.com', 'Refer a Friend', 'Spring');
+        sendSignUp('member@example.com', 'Refer a Friend', 'Spring');
+        Test.stopTest();
+
+        System.assertEquals(
+            1, [SELECT COUNT() FROM Lead WHERE Email = 'member@example.com'],
+            'A repeat of the same program and campaign is a duplicate, whatever the setting'
+        );
+    }
+
+    @IsTest
+    static void testSalesforceIdDoesNotHideANewCampaign() {
+        Lead first = new Lead(
+            LastName = 'First', Company = 'Acme', Email = 'repeat.friend@example.com',
+            Extole_Program_Name__c = 'Refer a Friend', Extole_Campaign_Name__c = 'Spring'
+        );
+        insert first;
+        makeLeadCreateRule('[]');
+
+        Test.startTest();
+        setRequest(
+            '{"event_name":"signed_up","data":{"email":"repeat.friend@example.com","salesforce_id":"' + first.Id +
+            '","program_name":"Welcome Offer","campaign_name":"Welcome Spring"}}'
+        );
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(
+            2, [SELECT COUNT() FROM Lead WHERE Email = 'repeat.friend@example.com'],
+            'The same person keeps one salesforce_id across campaigns, so it must not hide a new campaign'
+        );
+    }
+
+    @IsTest
+    static void testExplicitLeadSourceMappingWinsOverTheDefault() {
+        makeLeadCreateRule('[{"extoleKey":"lead_source","sfdcField":"LeadSource"}]');
+
+        Test.startTest();
+        setRequest(
+            '{"event_name":"signed_up","data":{"email":"maria@example.com","lead_source":"Partner Referral"}}'
+        );
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals('Partner Referral', [SELECT LeadSource FROM Lead WHERE Email = 'maria@example.com'].LeadSource);
+    }
+
+    @IsTest
+    static void testEventWithoutProgramOrCampaignStillMatchesByEmail() {
+        insert new Lead(LastName = 'Existing', Company = 'Acme', Email = 'maria@example.com');
+        makeLeadCreateRule('[]');
+
+        Test.startTest();
+        setRequest('{"event_name":"signed_up","data":{"email":"maria@example.com"}}');
+        ExtoleWebhookController.doPost();
+        Test.stopTest();
+
+        System.assertEquals(
+            1, [SELECT COUNT() FROM Lead WHERE Email = 'maria@example.com'],
+            'Without program and campaign the rule behaves as before and finds the existing Lead by email'
+        );
+    }
 }
