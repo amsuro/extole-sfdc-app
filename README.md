@@ -49,7 +49,7 @@ Connects Salesforce to your Extole referral program. Syncs program KPIs into Sal
 | `Extole_App_Admin`           | Admins configuring the integration (reports, audiences, events, writeback rules, credentials)                   |
 | `Extole_App_Viewer`          | Users who need read access to Program Analytics and the KPI Dashboard                                           |
 | `Extole_API_Access`          | System/integration users — grants access to the Extole API credential only                                      |
-| `Extole_Webhook_Integration` | The **Run As** user of the Receive Extole Events Client Credentials app ([install guide](https://docs.extole.com/technical/partners/crm/extole-to-salesforce-crm), Salesforce CRM Integration) |
+| `Extole_Webhook_Integration` | The **Run As** user of the Receive Extole Events Client Credentials app ([Salesforce CRM Integration](https://docs.extole.com/technical/partners/crm/extole-to-salesforce-crm#salesforce-crm-integration)) |
 
 **App and Tabs** — A Lightning app with seven tabs: Program Analytics, KPI Dashboard, Manage Share Links, Send Extole Events, Receive Extole Events, Configure KPIs, and Manage Audiences.
 
