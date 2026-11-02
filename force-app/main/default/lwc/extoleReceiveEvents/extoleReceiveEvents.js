@@ -170,6 +170,13 @@ export default class ExtoleReceiveEvents extends LightningElement {
         return this.editingConfig.Object_Type__c !== 'Account';
     }
 
+    get showLeadForExistingPersonOption() {
+        return (
+            this.editingConfig.Object_Type__c === 'Lead' &&
+            this.editingConfig.Create_If_Not_Found__c === true
+        );
+    }
+
     get statusOptions() {
         return [
             { label: 'Active', value: 'ACTIVE' },

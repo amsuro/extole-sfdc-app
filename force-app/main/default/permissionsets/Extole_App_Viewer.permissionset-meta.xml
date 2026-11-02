@@ -36,7 +36,19 @@
         >Contact.Extole_Share_Link__c</field><readable
         >true</readable></fieldPermissions>
     <fieldPermissions><editable>false</editable><field
+        >Contact.Extole_Program_Name__c</field><readable
+        >true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field
+        >Contact.Extole_Campaign_Name__c</field><readable
+        >true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field
         >Lead.Extole_Share_Link__c</field><readable
+        >true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field
+        >Lead.Extole_Program_Name__c</field><readable
+        >true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field
+        >Lead.Extole_Campaign_Name__c</field><readable
         >true</readable></fieldPermissions>
     <fieldPermissions><editable>false</editable><field
         >Extole_Event_Cfg__c.Active__c</field><readable

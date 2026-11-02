@@ -58,7 +58,12 @@ global without sharing class ExtoleWebhookController {
         }
 
         List<Extole_Writeback_Cfg__c> configs = [
-            SELECT Id, Object_Type__c, Field_Mappings__c, Create_If_Not_Found__c
+            SELECT
+                Id,
+                Object_Type__c,
+                Field_Mappings__c,
+                Create_If_Not_Found__c,
+                Create_Lead_If_Contact_Exists__c
             FROM Extole_Writeback_Cfg__c
             WHERE Event_Name__c = :eventName AND Status__c = 'ACTIVE'
             LIMIT 50
@@ -103,12 +108,32 @@ global without sharing class ExtoleWebhookController {
             String recordId = null;
 
             try {
-                SObject record = findRecord(objectType, email, salesforceId);
+                String program = sourceValue(data, 'program_name');
+                String campaign = sourceValue(data, 'campaign_name');
+                Boolean tracksSource = config.Create_If_Not_Found__c == true
+                    && objectType == 'Lead'
+                    && (program != null || campaign != null);
+                SObject record = tracksSource
+                    ? findByExtoleSource(email, program, campaign)
+                    : findRecord(objectType, email, salesforceId);
+                Boolean convertedMatch = record != null
+                    && tracksSource
+                    && (Boolean) record.get('IsConverted') == true;
                 Boolean canCreate = record == null
                     && config.Create_If_Not_Found__c
                     && String.isNotBlank(email)
                     && objectType != 'Account';
-                if (canCreate && personAlreadyExists(email)) {
+                Boolean allowLeadForExistingPerson = tracksSource
+                    && config.Create_Lead_If_Contact_Exists__c == true;
+                if (convertedMatch) {
+                    recordId = (String) record.get('Id');
+                    status = 'SKIPPED';
+                    errDetail = 'A Lead for this email, program and campaign was already created and has been converted, so no new Lead was created';
+                } else if (
+                    canCreate &&
+                    !allowLeadForExistingPerson &&
+                    personAlreadyExists(email)
+                ) {
                     // Creating a Lead/Contact here would duplicate an existing person.
                     status = 'SKIPPED';
                     errDetail =
@@ -119,7 +144,9 @@ global without sharing class ExtoleWebhookController {
                 } else if (canCreate) {
                     record = newRecord(objectType, email, data);
                     applyMappings(record, config.Field_Mappings__c, data);
-                    insert record;
+                    if (tracksSource)
+                        setExtoleSource(record, program, campaign);
+                    insertWithLeadSource(record, tracksSource);
                     recordId = (String) record.get('Id');
                     status = 'CREATED';
                 } else if (record == null) {
@@ -228,6 +255,73 @@ global without sharing class ExtoleWebhookController {
             }
         }
         return null;
+    }
+
+    private static String sourceValue(Map<String, Object> data, String key) {
+        Object value = data == null ? null : data.get(key);
+        if (value == null || String.isBlank(String.valueOf(value)))
+            return null;
+        return String.valueOf(value).trim();
+    }
+
+    @TestVisible
+    private static SObject findByExtoleSource(
+        String email,
+        String program,
+        String campaign
+    ) {
+        if (String.isBlank(email))
+            return null;
+        String soql = 'SELECT Id, IsConverted FROM Lead WHERE Email = :email';
+        Map<String, Object> binds = new Map<String, Object>{ 'email' => email };
+        if (program != null) {
+            soql += ' AND Extole_Program_Name__c = :program';
+            binds.put('program', program);
+        }
+        if (campaign != null) {
+            soql += ' AND Extole_Campaign_Name__c = :campaign';
+            binds.put('campaign', campaign);
+        }
+        soql += ' ORDER BY CreatedDate DESC LIMIT 1';
+        List<SObject> r = Database.queryWithBinds(
+            soql,
+            binds,
+            AccessLevel.SYSTEM_MODE
+        );
+        return r.isEmpty() ? null : r[0];
+    }
+
+    private static void setExtoleSource(
+        SObject record,
+        String program,
+        String campaign
+    ) {
+        if (program != null)
+            record.put('Extole_Program_Name__c', program);
+        if (campaign != null)
+            record.put('Extole_Campaign_Name__c', campaign);
+    }
+
+    private static void insertWithLeadSource(
+        SObject record,
+        Boolean allowDuplicateAlerts
+    ) {
+        if (record.get('LeadSource') == null)
+            record.put('LeadSource', 'Extole');
+        insertRecord(record, allowDuplicateAlerts);
+    }
+
+    private static void insertRecord(SObject record, Boolean allowDuplicateAlerts) {
+        if (!allowDuplicateAlerts) {
+            insert record;
+            return;
+        }
+        Database.DMLOptions options = new Database.DMLOptions();
+        options.duplicateRuleHeader.allowSave = true;
+        Database.SaveResult result = Database.insert(record, options);
+        if (!result.isSuccess()) {
+            throw new DmlException(result.getErrors()[0].getMessage());
+        }
     }
 
     // The unique Key__c makes a second insert for the same person wait until the first
