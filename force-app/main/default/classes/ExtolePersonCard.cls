@@ -47,6 +47,9 @@ public with sharing class ExtolePersonCard {
         public String program;
         @AuraEnabled
         public Reward reward;
+        // 'rewarded', 'declined' or 'pending'
+        @AuraEnabled
+        public String status;
         @AuraEnabled
         public String sfdcRecordId;
         @AuraEnabled
@@ -62,6 +65,9 @@ public with sharing class ExtolePersonCard {
         public String program;
         @AuraEnabled
         public Reward reward;
+        // 'rewarded', 'declined' or 'pending'
+        @AuraEnabled
+        public String status;
     }
 
     public class ReferredBy {
@@ -98,6 +104,13 @@ public with sharing class ExtolePersonCard {
         public Boolean friendsTruncated = false;
         @AuraEnabled
         public Boolean rewardsTruncated = false;
+        // What each program pays, by program, so a friend with no reward yet can
+        // still show an amount: the advocate's reward for a friend, and a
+        // program's one unnamed reward (shown only on a declined friend).
+        @AuraEnabled
+        public Map<String, String> advocateAmounts = new Map<String, String>();
+        @AuraEnabled
+        public Map<String, String> onlyAmounts = new Map<String, String>();
         @AuraEnabled
         public ReferredBy referredBy;
         @AuraEnabled

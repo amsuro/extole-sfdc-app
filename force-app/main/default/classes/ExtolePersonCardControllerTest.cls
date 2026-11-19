@@ -590,4 +590,295 @@ private class ExtolePersonCardControllerTest {
             )
             .reward.amountLabel;
     }
+
+    // ── Reward states: rewarded, declined, not rewarded yet ──────────────────
+
+    private static ExtolePersonCard.FriendRef refFor(
+        ExtoleConfigurableMock mock
+    ) {
+        Test.setMock(HttpCalloutMock.class, mock);
+        return ExtolePersonCardController.getCardData('advocate@example.com')
+            .friendRefs[0];
+    }
+
+    @IsTest
+    static void testAFriendWithNoDecisionIsNotRewardedYet() {
+        Test.startTest();
+        ExtolePersonCard.FriendRef ref = refFor(manyFriendsMock(1));
+        Test.stopTest();
+
+        System.assertEquals('pending', ref.status);
+    }
+
+    @IsTest
+    static void testARewardThatWentOutMakesTheFriendRewarded() {
+        Test.startTest();
+        ExtolePersonCard.FriendRef ref = refFor(
+            manyFriendsMock(1)
+                .addPattern(
+                    '/v5/persons/p_advocate/rewards',
+                    200,
+                    '[{"id":"r1","state":"FULFILLED","face_value":5,"face_value_type":"USD",' +
+                    '"data":{"other_person_id":{"value":"p_f0"}}}]'
+                )
+        );
+        Test.stopTest();
+
+        System.assertEquals('rewarded', ref.status);
+    }
+
+    @IsTest
+    static void testAFailedOrCanceledRewardMakesTheFriendDeclined() {
+        Test.startTest();
+        for (
+            String state : new List<String>{ 'FAILED', 'CANCELED', 'REVOKED' }
+        ) {
+            ExtolePersonCard.FriendRef ref = refFor(
+                manyFriendsMock(1)
+                    .addPattern(
+                        '/v5/persons/p_advocate/rewards',
+                        200,
+                        '[{"id":"r1","state":"' +
+                            state +
+                            '","face_value":5,"face_value_type":"USD",' +
+                            '"data":{"other_person_id":{"value":"p_f0"}}}]'
+                    )
+            );
+            System.assertEquals('declined', ref.status, state);
+        }
+        Test.stopTest();
+    }
+
+    private static String decision(String name, String stamp, String state) {
+        return '{"name":"' +
+            name +
+            '","event_date":"' +
+            stamp +
+            '",' +
+            '"journey_key":{"name":"identity_person_id","value":"p_f0"},' +
+            '"data":{"state":{"scope":"PRIVATE","value":"' +
+            state +
+            '"}}}';
+    }
+
+    // One friend, with the reward decisions answered first because the
+    // generic /steps pattern in manyFriendsMock would otherwise match them.
+    private static ExtoleConfigurableMock decisionsMock(
+        Integer status,
+        String decisions
+    ) {
+        return new ExtoleConfigurableMock()
+            .addPattern(
+                '/v5/persons/p_advocate/steps?journey_names=reward',
+                status,
+                decisions
+            )
+            .addPattern(
+                '/data',
+                200,
+                '{"email":{"name":"email","value":"friend@example.com","scope":"PUBLIC"}}'
+            )
+            .addPattern('/steps', 200, '[]')
+            .addPattern(
+                '/v5/persons/p_advocate/relationships',
+                200,
+                advocateRels(1)
+            )
+            .addPattern(
+                '/v5/persons?identity_key_value=',
+                200,
+                '[{"id":"p_advocate"}]'
+            )
+            .addPattern(
+                '/v5/persons/p_f',
+                200,
+                '{"id":"p_f","identity_key":"email","identity_key_value":"friend@example.com"}'
+            )
+            .withDefault(200, '[]');
+    }
+
+    @IsTest
+    static void testADeclinedRewardDecisionMakesTheFriendDeclined() {
+        Test.startTest();
+        ExtolePersonCard.FriendRef ref = refFor(
+            decisionsMock(
+                200,
+                '[' +
+                    decision(
+                        'reward_evaluated',
+                        '2026-11-18T12:37:23.569-08:00',
+                        'declined'
+                    ) +
+                    ']'
+            )
+        );
+        Test.stopTest();
+
+        System.assertEquals('declined', ref.status);
+    }
+
+    @IsTest
+    static void testTheNewestDecisionWins() {
+        Test.startTest();
+        // Declined, then approved by hand later: not declined any more.
+        ExtolePersonCard.FriendRef approved = refFor(
+            decisionsMock(
+                200,
+                '[' +
+                    decision(
+                        'reward_manually_approved',
+                        '2026-11-19T09:00:00.000-08:00',
+                        ''
+                    ) +
+                    ',' +
+                    decision(
+                        'reward_evaluated',
+                        '2026-11-18T12:00:00.000-08:00',
+                        'declined'
+                    ) +
+                    ']'
+            )
+        );
+        System.assertEquals('pending', approved.status);
+
+        // Approved, then declined by hand later: declined.
+        ExtolePersonCard.FriendRef declined = refFor(
+            decisionsMock(
+                200,
+                '[' +
+                    decision(
+                        'reward_manually_declined',
+                        '2026-11-19T09:00:00.000-08:00',
+                        ''
+                    ) +
+                    ',' +
+                    decision(
+                        'reward_evaluated',
+                        '2026-11-18T12:00:00.000-08:00',
+                        'approved'
+                    ) +
+                    ']'
+            )
+        );
+        Test.stopTest();
+
+        System.assertEquals('declined', declined.status);
+    }
+
+    @IsTest
+    static void testARewardBeatsADeclineForTheSameFriend() {
+        Test.startTest();
+        ExtolePersonCard.FriendRef ref = refFor(
+            manyFriendsMock(1)
+                .addPattern(
+                    '/v5/persons/p_advocate/rewards',
+                    200,
+                    '[{"id":"r1","state":"EARNED","face_value":5,"face_value_type":"USD",' +
+                        '"data":{"other_person_id":{"value":"p_f0"}}},' +
+                        '{"id":"r2","state":"FAILED","face_value":5,"face_value_type":"USD",' +
+                        '"data":{"other_person_id":{"value":"p_f0"}}}]'
+                )
+        );
+        Test.stopTest();
+
+        System.assertEquals('rewarded', ref.status);
+    }
+
+    @IsTest
+    static void testAFailedDecisionLookupLeavesFriendsNotRewardedYet() {
+        Test.startTest();
+        ExtolePersonCard.FriendRef ref = refFor(decisionsMock(500, '{}'));
+        Test.stopTest();
+
+        System.assertEquals('pending', ref.status);
+        System.assertEquals(
+            1,
+            ExtolePersonCardController.getCardData('advocate@example.com')
+                .totalFriends
+        );
+    }
+
+    // ── What a program pays ──────────────────────────────────────────────────
+
+    private static ExtoleConfigurableMock amountsMock(String components) {
+        return manyFriendsMock(1)
+            .addPattern(
+                '/v6/reward-suppliers',
+                200,
+                '[{"id":"s1","face_value":5,"face_value_type":"USD"},' +
+                '{"id":"s2","face_value":10,"face_value_type":"USD"}]'
+            )
+            .addPattern(
+                '/v2/campaign-summaries',
+                200,
+                '[{"campaign_id":"c1","program_label":"referral-program","state":"LIVE"}]'
+            )
+            .addPattern('/v2/campaigns/c1/components', 200, components);
+    }
+
+    @IsTest
+    static void testTheAdvocatesAmountIsTheRewardNamedForTheAdvocate() {
+        Test.setMock(
+            HttpCalloutMock.class,
+            amountsMock(
+                '[{"name":"advocate_reward","types":["reward-v10.0"],' +
+                    '"variables":[{"name":"rewardSupplierId","values":{"default":"s2"}}]},' +
+                    '{"name":"friend_reward","types":["reward-v10.0"],' +
+                    '"variables":[{"name":"rewardSupplierId","values":{"default":"s1"}}]}]'
+            )
+        );
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals(
+            '$10',
+            result.advocateAmounts.get('referral-program')
+        );
+    }
+
+    @IsTest
+    static void testASingleUnnamedRewardIsNeverShownAgainstTheAdvocate() {
+        Test.setMock(
+            HttpCalloutMock.class,
+            amountsMock(
+                '[{"name":"reward","types":["reward-v10.0"],' +
+                '"variables":[{"name":"rewardSupplierId","values":{"default":"s1"}}]}]'
+            )
+        );
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        // It isn't clear who it pays, so it is not the advocate's amount. It
+        // can still stand in for a declined friend whose amount is unknown.
+        System.assertEquals(
+            null,
+            result.advocateAmounts.get('referral-program')
+        );
+        System.assertEquals('$5', result.onlyAmounts.get('referral-program'));
+    }
+
+    @IsTest
+    static void testNoAmountWhenTheRewardSetupCannotBeRead() {
+        Test.setMock(
+            HttpCalloutMock.class,
+            manyFriendsMock(1).addPattern('/v6/reward-suppliers', 500, '{}')
+        );
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals(0, result.advocateAmounts.size());
+        System.assertEquals(1, result.friendRefs.size());
+    }
 }

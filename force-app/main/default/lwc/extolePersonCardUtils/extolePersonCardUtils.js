@@ -52,29 +52,76 @@ export function detailsArgs(refs) {
 }
 
 export function attachRewards(friends, refs) {
-    const rewardById = new Map((refs || []).map((r) => [r.personId, r.reward]));
-    return (friends || []).map((f) => ({
-        ...f,
-        reward: rewardById.get(f.personId) || null
-    }));
+    const refById = new Map((refs || []).map((r) => [r.personId, r]));
+    return (friends || []).map((f) => {
+        const ref = refById.get(f.personId);
+        return {
+            ...f,
+            reward: (ref && ref.reward) || null,
+            status: (ref && ref.status) || 'pending'
+        };
+    });
 }
 
-export function decorateFriend(f, rewardsTruncated = false) {
-    // The server only sends a reward once it has gone out (earned, sent or
-    // redeemed), so having one is enough.
-    const earned = !!f.reward;
-    const rewardDateStr = earned ? formatShortDate(f.reward.dateEarned) : null;
-    const statusText = earned
-        ? rewardDateStr
-            ? `Reward earned ${rewardDateStr}`
-            : 'Reward earned'
+// Where a friend's reward stands: given a reward, 'rewarded'; otherwise
+// 'declined' or 'pending' as the server found.
+export function rewardStatus(f) {
+    if (f.reward) return 'rewarded';
+    return f.status === 'declined' ? 'declined' : 'pending';
+}
+
+// What a reward's state means to a person. Earned in Extole is "earned"; sent or
+// fulfilled is "sent".
+const REWARD_STATE_WORDS = {
+    EARNED: 'earned',
+    FULFILLED: 'sent',
+    SENT: 'sent',
+    REDEEMED: 'redeemed'
+};
+
+// How a reward is shown: one pill with the amount and where it stands, such as
+// "$5 pending", "$5 earned", "$5 sent" or "$5 declined", with the date once it
+// is earned. amountLabel is what the program pays, for a reward that has no
+// row yet. A pending reward with no known amount shows nothing.
+export function describeReward(f, amountLabel, declinedLabel) {
+    const status = rewardStatus(f);
+    const earned = status === 'rewarded';
+    const declined = status === 'declined';
+    const word = earned
+        ? REWARD_STATE_WORDS[String(f.reward.state).toUpperCase()] || 'earned'
         : '';
+    const amount = earned ? f.reward.amountLabel : amountLabel;
+    let text = '';
+    if (earned) text = [amount || 'Reward', word].join(' ');
+    else if (declined) {
+        // A decline falls back to the program's one reward when the amount is
+        // otherwise unknown.
+        const shown = amount || declinedLabel;
+        text = shown ? `${shown} declined` : 'Reward declined';
+    } else if (amount) text = `${amount} pending`;
+    return {
+        status,
+        earned,
+        declined,
+        text,
+        cls: `reward-pill reward-pill-${earned ? 'earned' : declined ? 'declined' : 'pending'}`,
+        dateText: earned ? formatShortDate(f.reward.dateEarned) : ''
+    };
+}
+
+// amounts and declinedAmounts say what each program pays, by program.
+export function decorateFriend(f, amounts, declinedAmounts) {
+    const { status, earned, declined, text, cls, dateText } = describeReward(
+        f,
+        amounts && amounts[f.program],
+        declinedAmounts && declinedAmounts[f.program]
+    );
     const displayName = f.displayName || f.email || 'Anonymous';
-    const milestones = (f.steps || []).map((s) => ({
-        key: s.name,
-        label: s.label,
-        date: s.dateCompleted ? formatShortDate(s.dateCompleted) : null,
-        rowClass: s.dateCompleted
+    const milestones = (f.steps || []).map((st) => ({
+        key: st.name,
+        label: st.label,
+        date: st.dateCompleted ? formatShortDate(st.dateCompleted) : null,
+        rowClass: st.dateCompleted
             ? 'milestone-row milestone-row-completed'
             : 'milestone-row milestone-row-pending'
     }));
@@ -82,29 +129,32 @@ export function decorateFriend(f, rewardsTruncated = false) {
         key: f.personId,
         program: f.program || 'unknown',
         displayName,
+        status,
         sfdcUrl: f.sfdcRecordId
             ? `/lightning/r/${f.sfdcObjectType}/${f.sfdcRecordId}/view`
             : null,
         isLinked: !!f.sfdcRecordId,
         avatarInitials: computeInitials(displayName),
-        avatarClass: earned ? 'avatar avatar-success' : 'avatar avatar-neutral',
+        avatarClass: earned
+            ? 'avatar avatar-success'
+            : declined
+              ? 'avatar avatar-declined'
+              : 'avatar avatar-neutral',
         avatarIsEarned: earned,
-        statusText,
-        rewardStateText: earned
-            ? f.reward.amountLabel
-            : rewardsTruncated
-              ? ''
-              : 'no reward yet',
-        rewardStateClass: earned ? 'reward-amount-earned' : 'reward-pending',
+        avatarIsDeclined: declined,
+        // Nothing shows until there is an amount, a reward or a decline.
+        rewardStateText: text,
+        rewardStateClass: cls,
+        rewardDateText: dateText,
         milestones,
         hasMilestones: milestones.length > 0
     };
 }
 
-export function groupByProgram(friends, rewardsTruncated = false) {
+export function groupByProgram(friends, amounts, declinedAmounts) {
     const byProgram = new Map();
     for (const f of friends) {
-        const d = decorateFriend(f, rewardsTruncated);
+        const d = decorateFriend(f, amounts, declinedAmounts);
         if (!byProgram.has(d.program)) byProgram.set(d.program, []);
         byProgram.get(d.program).push(d);
     }
