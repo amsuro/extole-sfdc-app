@@ -93,13 +93,13 @@ private class ExtolePersonCardControllerTest {
                 '[{"code":"ABC123","link":"https://refer.example.com/abc123","label":"Refer-a-Friend"}]'
             )
             .addPattern(
-                '/v5/persons/p_advocate/relationships',
+                '/v5/persons/p_advocate/relationships?limit=100&offset=0',
                 200,
                 '[{"my_role":"ADVOCATE","other_person_id":"p_friend","program":"referral-program"},' +
                 '{"my_role":"FRIEND","other_person_id":"p_referrer","program":"referral-program"}]'
             )
             .addPattern(
-                '/v5/persons/p_advocate/rewards',
+                '/v5/persons/p_advocate/rewards?limit=100&offset=0',
                 200,
                 '[{"reward_id":"r1","state":"EARNED","face_value":25,"face_value_type":"usd",' +
                     '"date_earned":"2026-01-01","program_label":"Referral Program","campaign_id":"c1",' +
