@@ -101,9 +101,9 @@ private class ExtolePersonCardControllerTest {
             .addPattern(
                 '/v5/persons/p_advocate/rewards?limit=100&offset=0',
                 200,
-                '[{"reward_id":"r1","state":"EARNED","face_value":25,"face_value_type":"usd",' +
-                    '"date_earned":"2026-01-01","program_label":"Referral Program","campaign_id":"c1",' +
-                    '"data":{"other_person_id":"p_friend"}}]'
+                '[{"id":"r1","state":"EARNED","face_value":25,"face_value_type":"usd",' +
+                    '"earned_date":"2026-01-01","program":"Referral Program","campaign_id":"c1",' +
+                    '"data":{"other_person_id":{"name":"other_person_id","value":"p_friend"}}}]'
             )
             .addPattern(
                 '/v5/persons?identity_key_value=',
@@ -501,7 +501,7 @@ private class ExtolePersonCardControllerTest {
             HttpCalloutMock.class,
             manyFriendsMock(1)
                 .addPattern(
-                    '/v5/persons/p_advocate/rewards',
+                    '/v5/persons/p_advocate/rewards?limit=100&offset=0',
                     200,
                     '[' + rewardRow + ']'
                 )
@@ -512,8 +512,6 @@ private class ExtolePersonCardControllerTest {
 
     @IsTest
     static void testRewardInTheShapeExtoleReturns() {
-        // Other person as {name, value}, id under "id", date under earned_date,
-        // upper-case face value type, program under "program".
         Test.startTest();
         ExtolePersonCard.Friend f = friendWithReward(
             '{"id":"r9","state":"FULFILLED","face_value":5.0,"face_value_type":"USD",' +
@@ -534,21 +532,22 @@ private class ExtolePersonCardControllerTest {
     }
 
     @IsTest
-    static void testRewardedStatesAreEarnedSentAndRedeemed() {
+    static void testRewardedStatesAreEarnedSentRedeemedAndExpired() {
         Test.startTest();
         for (
             String state : new List<String>{
                 'EARNED',
                 'FULFILLED',
                 'SENT',
-                'REDEEMED'
+                'REDEEMED',
+                'EXPIRED'
             }
         ) {
             ExtolePersonCard.Friend f = friendWithReward(
                 '{"id":"r1","state":"' +
                     state +
                     '","face_value":5,"face_value_type":"USD",' +
-                    '"data":{"other_person_id":"p_f0"}}'
+                    '"data":{"other_person_id":{"name":"other_person_id","value":"p_f0"}}}'
             );
             System.assertNotEquals(
                 null,
@@ -558,7 +557,7 @@ private class ExtolePersonCardControllerTest {
         }
         ExtolePersonCard.Friend failed = friendWithReward(
             '{"id":"r1","state":"FAILED","face_value":5,"face_value_type":"USD",' +
-            '"data":{"other_person_id":"p_f0"}}'
+            '"data":{"other_person_id":{"name":"other_person_id","value":"p_f0"}}}'
         );
         Test.stopTest();
 
@@ -587,7 +586,7 @@ private class ExtolePersonCardControllerTest {
                     faceValue +
                     ',"face_value_type":"' +
                     faceValueType +
-                    '","data":{"other_person_id":"p_f0"}}'
+                    '","data":{"other_person_id":{"name":"other_person_id","value":"p_f0"}}}'
             )
             .reward.amountLabel;
     }

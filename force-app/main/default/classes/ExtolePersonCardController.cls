@@ -5,14 +5,14 @@ public with sharing class ExtolePersonCardController {
     private static final Integer CALLOUTS_PER_FRIEND = 3;
     private static final Integer PAGE_SIZE = 100;
     private static final Integer MAX_PAGES = 10;
-    // Reward states that mean the reward went out. EARNED is earned in Extole,
-    // FULFILLED or SENT means it was sent, and REDEEMED means it was used.
+    // Reward states for a reward that was given. EXPIRED can only follow
+    // EARNED, FULFILLED or SENT, so the person did get one.
     private static final Set<String> REWARDED_STATES = new Set<String>{
         'EARNED',
         'FULFILLED',
         'SENT',
         'REDEEMED',
-        'PAID'
+        'EXPIRED'
     };
 
     @AuraEnabled(cacheable=true)
@@ -916,24 +916,16 @@ public with sharing class ExtolePersonCardController {
         }
     }
 
-    // A reward as Extole returns it. The id is under 'id', the date under
-    // 'earned_date', and the program under 'program'; older shapes are still read.
     private static ExtolePersonCard.Reward buildReward(
         Map<String, Object> m,
         String state
     ) {
         ExtolePersonCard.Reward r = new ExtolePersonCard.Reward();
-        r.rewardId = String.isNotBlank(getString(m, 'reward_id'))
-            ? getString(m, 'reward_id')
-            : getString(m, 'id');
+        r.rewardId = getString(m, 'id');
         r.state = state;
         r.faceValueType = getString(m, 'face_value_type');
-        r.dateEarned = String.isNotBlank(getString(m, 'earned_date'))
-            ? getString(m, 'earned_date')
-            : getString(m, 'date_earned');
-        r.programLabel = String.isNotBlank(getString(m, 'program'))
-            ? getString(m, 'program')
-            : getString(m, 'program_label');
+        r.dateEarned = getString(m, 'earned_date');
+        r.programLabel = getString(m, 'program');
         r.campaignId = getString(m, 'campaign_id');
         Object fv = m.get('face_value');
         if (fv != null) {
@@ -982,12 +974,13 @@ public with sharing class ExtolePersonCardController {
             : num + ' ' + faceValueType.toUpperCase();
     }
 
-    // Data values arrive as {name, value}, or occasionally as a plain string.
+    // Data values arrive as {name, value}.
     private static String dataString(Map<String, Object> data, String key) {
         Object v = data.get(key);
-        if (v instanceof Map<String, Object>)
-            v = ((Map<String, Object>) v).get('value');
-        return v instanceof String ? (String) v : null;
+        if (!(v instanceof Map<String, Object>))
+            return null;
+        Object value = ((Map<String, Object>) v).get('value');
+        return value instanceof String ? (String) value : null;
     }
 
     private static String getString(Map<String, Object> m, String key) {
