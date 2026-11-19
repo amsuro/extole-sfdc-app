@@ -1,0 +1,48 @@
+<template>
+    <div class="engagement-card">
+        <div class="engagement-header">
+            <div class={friend.avatarClass}>
+                <template lwc:if={friend.avatarIsEarned}>
+                    <lightning-icon
+                        icon-name="utility:check"
+                        size="x-small"
+                        variant="inverse"
+                    ></lightning-icon>
+                </template>
+                <template lwc:else>
+                    <span class="avatar-initials">{friend.avatarInitials}</span>
+                </template>
+            </div>
+            <div class="engagement-identity">
+                <template lwc:if={friend.isLinked}>
+                    <a href={friend.sfdcUrl} class="engagement-name record-link"
+                        >{friend.displayName}</a
+                    >
+                </template>
+                <template lwc:else>
+                    <span class="engagement-name">{friend.displayName}</span>
+                </template>
+                <div class="engagement-status">{friend.statusText}</div>
+            </div>
+            <span class={friend.rewardStateClass}
+                >{friend.rewardStateText}</span
+            >
+        </div>
+        <template lwc:if={friend.hasMilestones}>
+            <div class="milestone-list">
+                <template for:each={friend.milestones} for:item="m">
+                    <div key={m.key} class={m.rowClass}>
+                        <div class="milestone-bullet"></div>
+                        <span class="milestone-label">{m.label}</span>
+                        <template lwc:if={m.date}>
+                            <span class="milestone-date">{m.date}</span>
+                        </template>
+                        <template lwc:else>
+                            <span></span>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </template>
+    </div>
+</template>

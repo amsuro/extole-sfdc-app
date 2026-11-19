@@ -243,4 +243,138 @@ private class ExtolePersonCardControllerTest {
         );
         System.assertEquals('Extole_Share_Link__pc', field);
     }
+
+    // ── Every friend, not just the first 25 ──────────────────────────────────
+
+    private static String advocateRels(Integer count) {
+        String body = '[';
+        for (Integer i = 0; i < count; i++) {
+            body +=
+                (i > 0 ? ',' : '') +
+                '{"my_role":"ADVOCATE","other_person_id":"p_f' +
+                i +
+                '","program":"referral-program"}';
+        }
+        return body + ']';
+    }
+
+    private static ExtoleConfigurableMock manyFriendsMock(Integer count) {
+        return new ExtoleConfigurableMock()
+            .addPattern(
+                '/data',
+                200,
+                '{"email":{"name":"email","value":"friend@example.com","scope":"PUBLIC"}}'
+            )
+            .addPattern('/steps', 200, '[]')
+            .addPattern(
+                '/v5/persons/p_advocate/relationships',
+                200,
+                advocateRels(count)
+            )
+            .addPattern(
+                '/v5/persons?identity_key_value=',
+                200,
+                '[{"id":"p_advocate"}]'
+            )
+            .addPattern(
+                '/v5/persons/p_f',
+                200,
+                '{"id":"p_f","identity_key":"email","identity_key_value":"friend@example.com"}'
+            )
+            .withDefault(200, '[]');
+    }
+
+    @IsTest
+    static void testEveryFriendIsKnownButOnlyTheFirstBatchIsLookedUp() {
+        Test.setMock(HttpCalloutMock.class, manyFriendsMock(60));
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals(60, result.totalFriends);
+        System.assertEquals(60, result.friendRefs.size());
+        System.assertEquals(5, result.friends.size());
+        System.assertEquals('p_f0', result.friendRefs[0].personId);
+        System.assertEquals('p_f59', result.friendRefs[59].personId);
+    }
+
+    @IsTest
+    static void testFriendsPastTheOldFiftyRelationshipLimitAreCounted() {
+        // The relationships come back a page at a time, 100 per page.
+        Test.setMock(HttpCalloutMock.class, manyFriendsMock(100));
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals(100, result.totalFriends);
+    }
+
+    @IsTest
+    static void testGetFriendDetailsLoadsTheFriendsItIsGiven() {
+        Test.setMock(HttpCalloutMock.class, manyFriendsMock(0));
+
+        Test.startTest();
+        List<ExtolePersonCard.Friend> friends = ExtolePersonCardController.getFriendDetails(
+            new List<String>{ 'p_f7' },
+            new List<String>{ 'referral-program' }
+        );
+        Test.stopTest();
+
+        System.assertEquals(1, friends.size());
+        System.assertEquals('p_f7', friends[0].personId);
+        System.assertEquals('referral-program', friends[0].program);
+        System.assertEquals('friend@example.com', friends[0].email);
+    }
+
+    @IsTest
+    static void testGetFriendDetailsLoadsAtMostOneBatchPerCall() {
+        Test.setMock(HttpCalloutMock.class, manyFriendsMock(0));
+        List<String> ids = new List<String>();
+        for (Integer i = 0; i < 40; i++) {
+            ids.add('p_f' + i);
+        }
+
+        Test.startTest();
+        List<ExtolePersonCard.Friend> friends = ExtolePersonCardController.getFriendDetails(
+            ids,
+            null
+        );
+        Test.stopTest();
+
+        System.assertEquals(20, friends.size());
+        System.assertEquals('p_f0', friends[0].personId);
+    }
+
+    @IsTest
+    static void testGetFriendDetailsToleratesEmptyAndBlankInput() {
+        System.assertEquals(
+            0,
+            ExtolePersonCardController.getFriendDetails(null, null).size()
+        );
+        System.assertEquals(
+            0,
+            ExtolePersonCardController.getFriendDetails(
+                    new List<String>(),
+                    new List<String>()
+                )
+                .size()
+        );
+        Test.setMock(HttpCalloutMock.class, manyFriendsMock(0));
+        Test.startTest();
+        System.assertEquals(
+            0,
+            ExtolePersonCardController.getFriendDetails(
+                    new List<String>{ '', null },
+                    null
+                )
+                .size()
+        );
+        Test.stopTest();
+    }
 }

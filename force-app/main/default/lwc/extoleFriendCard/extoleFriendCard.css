@@ -1,0 +1,169 @@
+:host {
+    --extole-green: #1d9e75;
+    --extole-green-faint: rgba(29, 158, 117, 0.12);
+    --text-primary: #181818;
+    --text-secondary: #6b7280;
+    --text-tertiary: #9ca3af;
+    --surface-muted: #f7f7f7;
+    display: block;
+}
+
+.avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    user-select: none;
+}
+
+.avatar-neutral {
+    width: 36px;
+    height: 36px;
+    font-size: 11px;
+    background: #ececec;
+    color: #4a4a4a;
+}
+
+.avatar-success {
+    width: 36px;
+    height: 36px;
+    background: var(--extole-green);
+    color: #ffffff;
+}
+
+.avatar-success lightning-icon {
+    --sds-c-icon-color-foreground-default: #ffffff;
+}
+
+.avatar-initials {
+    line-height: 1;
+}
+
+.engagement-card {
+    background: var(--surface-muted);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.engagement-header {
+    display: grid;
+    grid-template-columns: 36px 1fr auto;
+    align-items: center;
+    gap: 10px;
+}
+
+.engagement-identity {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.engagement-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+a.engagement-name {
+    color: var(--extole-green);
+    text-decoration: none;
+}
+
+a.engagement-name:hover {
+    text-decoration: underline;
+}
+
+.engagement-status {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.2;
+}
+
+.reward-pending {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+
+.reward-amount-earned {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--extole-green);
+    white-space: nowrap;
+}
+
+.record-link {
+    color: var(--extole-green);
+    text-decoration: none;
+}
+
+.record-link:hover {
+    text-decoration: underline;
+}
+
+.plain-email {
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.milestone-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 4px 2px 4px;
+}
+
+.milestone-row {
+    display: grid;
+    grid-template-columns: 16px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    line-height: 1.4;
+}
+
+.milestone-bullet {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    justify-self: center;
+}
+
+.milestone-row-completed .milestone-bullet {
+    background: var(--extole-green);
+}
+
+.milestone-row-completed .milestone-label {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.milestone-row-pending .milestone-bullet {
+    background: transparent;
+    border: 1.5px solid #cbcfd4;
+    width: 10px;
+    height: 10px;
+    box-sizing: border-box;
+}
+
+.milestone-row-pending .milestone-label {
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+.milestone-date {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}

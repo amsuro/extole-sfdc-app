@@ -1,0 +1,39 @@
+<template>
+    <lightning-modal-header label={headerLabel}></lightning-modal-header>
+    <lightning-modal-body>
+        <template lwc:if={isLoading}>
+            <div class="loading-row">Loading friends…</div>
+        </template>
+        <template lwc:if={error}>
+            <div class="error-banner">{error}</div>
+        </template>
+        <template for:each={groups} for:item="g">
+            <div key={g.program} class="program-group">
+                <span class="program-pill" style={g.programStyle}
+                    >{g.program}</span
+                >
+                <template for:each={g.friends} for:item="f">
+                    <c-extole-friend-card
+                        key={f.key}
+                        friend={f}
+                    ></c-extole-friend-card>
+                </template>
+            </div>
+        </template>
+    </lightning-modal-body>
+    <lightning-modal-footer>
+        <div class="pager">
+            <lightning-button
+                label="Previous"
+                onclick={handlePrev}
+                disabled={prevDisabled}
+            ></lightning-button>
+            <span class="pager-range">{rangeText}</span>
+            <lightning-button
+                label="Next"
+                onclick={handleNext}
+                disabled={nextDisabled}
+            ></lightning-button>
+        </div>
+    </lightning-modal-footer>
+</template>

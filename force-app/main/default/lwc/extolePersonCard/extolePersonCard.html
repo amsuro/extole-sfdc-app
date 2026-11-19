@@ -155,6 +155,21 @@
                                 class="section-chevron"
                             ></lightning-icon>
                             <span class="section-label">{friendsLabel}</span>
+                            <template lwc:if={friendsExpandable}>
+                                <button
+                                    type="button"
+                                    class="expand-btn"
+                                    onclick={handleExpand}
+                                    title="Expand friends"
+                                    aria-label="Expand friends"
+                                >
+                                    <lightning-icon
+                                        icon-name="utility:expand_alt"
+                                        size="xx-small"
+                                        class="expand-icon"
+                                    ></lightning-icon>
+                                </button>
+                            </template>
                         </div>
                         <template lwc:if={friendsExpanded}>
                             <div class="section-body friends-body">
@@ -169,94 +184,27 @@
                                             for:each={g.friends}
                                             for:item="f"
                                         >
-                                            <div
+                                            <c-extole-friend-card
                                                 key={f.key}
-                                                class="engagement-card"
-                                            >
-                                                <div class="engagement-header">
-                                                    <div class={f.avatarClass}>
-                                                        <template
-                                                            lwc:if={f.avatarIsEarned}
-                                                        >
-                                                            <lightning-icon
-                                                                icon-name="utility:check"
-                                                                size="x-small"
-                                                                variant="inverse"
-                                                            ></lightning-icon>
-                                                        </template>
-                                                        <template lwc:else>
-                                                            <span
-                                                                class="avatar-initials"
-                                                                >{f.avatarInitials}</span
-                                                            >
-                                                        </template>
-                                                    </div>
-                                                    <div
-                                                        class="engagement-identity"
-                                                    >
-                                                        <template
-                                                            lwc:if={f.isLinked}
-                                                        >
-                                                            <a
-                                                                href={f.sfdcUrl}
-                                                                class="engagement-name record-link"
-                                                                >{f.displayName}</a
-                                                            >
-                                                        </template>
-                                                        <template lwc:else>
-                                                            <span
-                                                                class="engagement-name"
-                                                                >{f.displayName}</span
-                                                            >
-                                                        </template>
-                                                        <div
-                                                            class="engagement-status"
-                                                        >
-                                                            {f.statusText}
-                                                        </div>
-                                                    </div>
-                                                    <span
-                                                        class={f.rewardStateClass}
-                                                        >{f.rewardStateText}</span
-                                                    >
-                                                </div>
-                                                <template
-                                                    lwc:if={f.hasMilestones}
-                                                >
-                                                    <div class="milestone-list">
-                                                        <template
-                                                            for:each={f.milestones}
-                                                            for:item="m"
-                                                        >
-                                                            <div
-                                                                key={m.key}
-                                                                class={m.rowClass}
-                                                            >
-                                                                <div
-                                                                    class="milestone-bullet"
-                                                                ></div>
-                                                                <span
-                                                                    class="milestone-label"
-                                                                    >{m.label}</span
-                                                                >
-                                                                <template
-                                                                    lwc:if={m.date}
-                                                                >
-                                                                    <span
-                                                                        class="milestone-date"
-                                                                        >{m.date}</span
-                                                                    >
-                                                                </template>
-                                                                <template
-                                                                    lwc:else
-                                                                >
-                                                                    <span></span>
-                                                                </template>
-                                                            </div>
-                                                        </template>
-                                                    </div>
-                                                </template>
-                                            </div>
+                                                friend={f}
+                                            ></c-extole-friend-card>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template lwc:if={friendsExpandable}>
+                                    <div class="show-more-row">
+                                        <span class="show-more-count"
+                                            >{friendsCountText}</span
+                                        >
+                                        <template
+                                            lwc:if={friendsShowMoreVisible}
+                                        >
+                                            <lightning-button
+                                                variant="neutral"
+                                                label="Show more"
+                                                onclick={handleShowMore}
+                                                disabled={isLoadingMore}
+                                            ></lightning-button>
                                         </template>
                                     </div>
                                 </template>

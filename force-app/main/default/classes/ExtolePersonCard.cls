@@ -55,6 +55,16 @@ public with sharing class ExtolePersonCard {
         public List<JourneyStep> steps = new List<JourneyStep>();
     }
 
+    // One friend as the card first learns of them, before their details load.
+    public class FriendRef {
+        @AuraEnabled
+        public String personId;
+        @AuraEnabled
+        public String program;
+        @AuraEnabled
+        public Reward reward;
+    }
+
     public class ReferredBy {
         @AuraEnabled
         public String personId;
@@ -81,6 +91,11 @@ public with sharing class ExtolePersonCard {
         public List<ShareLink> shareLinks = new List<ShareLink>();
         @AuraEnabled
         public List<Friend> friends = new List<Friend>();
+        // Every friend, so the card can load the rest a batch at a time.
+        @AuraEnabled
+        public List<FriendRef> friendRefs = new List<FriendRef>();
+        @AuraEnabled
+        public Integer totalFriends = 0;
         @AuraEnabled
         public ReferredBy referredBy;
         @AuraEnabled
