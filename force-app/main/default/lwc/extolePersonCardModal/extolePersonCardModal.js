@@ -25,7 +25,6 @@ export default class ExtolePersonCardModal extends LightningModal {
     @api loaded = [];
     @api friendsTruncated = false;
     @api advocateAmounts;
-    @api declinedAmounts;
 
     byId = {};
     filter = 'all';
@@ -40,7 +39,6 @@ export default class ExtolePersonCardModal extends LightningModal {
         this.ensurePageLoaded();
     }
 
-    // The friends the filter lets through, in order.
     get shownRefs() {
         const refs = this.friendRefs || [];
         const want = STATUS_FOR_FILTER[this.filter];
@@ -63,8 +61,7 @@ export default class ExtolePersonCardModal extends LightningModal {
     get groups() {
         return groupByProgram(
             this.pageRefs.map((r) => this.byId[r.personId]).filter(Boolean),
-            this.advocateAmounts,
-            this.declinedAmounts
+            this.advocateAmounts
         );
     }
 

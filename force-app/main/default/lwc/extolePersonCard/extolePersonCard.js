@@ -228,11 +228,7 @@ export default class ExtolePersonCard extends LightningElement {
     }
 
     get programGroups() {
-        return groupByProgram(
-            this.friendsLoaded,
-            this.card.advocateAmounts,
-            this.declinedAmounts
-        );
+        return groupByProgram(this.friendsLoaded, this.card.advocateAmounts);
     }
 
     async handleShowMore() {
@@ -263,15 +259,6 @@ export default class ExtolePersonCard extends LightningElement {
         }
     }
 
-    // What a declined friend's reward was: the advocate's own amount, else the
-    // program's one reward.
-    get declinedAmounts() {
-        return {
-            ...((this.card && this.card.onlyAmounts) || {}),
-            ...((this.card && this.card.advocateAmounts) || {})
-        };
-    }
-
     async handleExpand(event) {
         event.stopPropagation();
         await ExtolePersonCardModal.open({
@@ -279,8 +266,7 @@ export default class ExtolePersonCard extends LightningElement {
             friendRefs: this.card.friendRefs || [],
             loaded: this.friendsLoaded,
             friendsTruncated: this.friendsTruncated,
-            advocateAmounts: this.card.advocateAmounts,
-            declinedAmounts: this.declinedAmounts
+            advocateAmounts: this.card.advocateAmounts
         });
     }
 

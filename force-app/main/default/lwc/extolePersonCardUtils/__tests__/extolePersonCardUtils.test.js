@@ -34,6 +34,7 @@ describe('helpers', () => {
 describe('describeReward', () => {
     it('describes each state as one pill the same way everywhere', () => {
         const rewarded = describeReward({
+            status: 'rewarded',
             reward: {
                 state: 'EARNED',
                 amountLabel: '$5',
@@ -52,7 +53,7 @@ describe('describeReward', () => {
         expect(declined.text).toBe('$5 declined');
         expect(declined.cls).toBe('reward-pill reward-pill-declined');
 
-        const pending = describeReward({}, '$5');
+        const pending = describeReward({ status: 'pending' }, '$5');
         expect(pending.text).toBe('$5 pending');
         expect(pending.cls).toBe('reward-pill reward-pill-pending');
         expect(pending.dateText).toBe('');
@@ -60,25 +61,32 @@ describe('describeReward', () => {
 
     it('says earned, sent or redeemed to match the reward state', () => {
         const text = (state) =>
-            describeReward({ reward: { state, amountLabel: '$5' } }).text;
+            describeReward({
+                status: 'rewarded',
+                reward: { state, amountLabel: '$5' }
+            }).text;
         expect(text('EARNED')).toBe('$5 earned');
-        // Fulfilled in Extole means it has been sent.
         expect(text('FULFILLED')).toBe('$5 sent');
         expect(text('SENT')).toBe('$5 sent');
         expect(text('REDEEMED')).toBe('$5 redeemed');
     });
 
     it('shows nothing for a pending reward with no known amount', () => {
-        expect(describeReward({}).text).toBe('');
+        expect(describeReward({ status: 'pending' }).text).toBe('');
+    });
+
+    it('shows nothing when the status is unknown, even with an amount', () => {
+        expect(describeReward({ status: null }, '$5').text).toBe('');
     });
 
     it('handles a percent and an amount with no label', () => {
         expect(describeReward({ status: 'declined' }, '20%').text).toBe(
             '20% declined'
         );
-        expect(describeReward({ reward: { state: 'EARNED' } }).text).toBe(
-            'Reward earned'
-        );
+        expect(
+            describeReward({ status: 'rewarded', reward: { state: 'EARNED' } })
+                .text
+        ).toBe('Reward earned');
     });
 });
 
@@ -88,6 +96,7 @@ describe('decorateFriend', () => {
             personId: 'p1',
             displayName: 'Maria Alvarez',
             program: 'refer-a-friend',
+            status: 'rewarded',
             reward: {
                 state: 'EARNED',
                 amountLabel: '$50',
@@ -105,7 +114,11 @@ describe('decorateFriend', () => {
     });
 
     it('shows nothing for a friend with no decision and no known amount', () => {
-        const d = decorateFriend({ personId: 'p1', email: 'a@example.com' });
+        const d = decorateFriend({
+            personId: 'p1',
+            email: 'a@example.com',
+            status: 'pending'
+        });
         expect(d.rewardStateText).toBe('');
         expect(d.displayName).toBe('a@example.com');
         expect(d.program).toBe('unknown');
@@ -115,16 +128,15 @@ describe('decorateFriend', () => {
 
     it('uses what the program pays for a friend still pending', () => {
         const d = decorateFriend(
-            { personId: 'p1', program: 'rf' },
+            { personId: 'p1', program: 'rf', status: 'pending' },
             { rf: '$10' }
         );
         expect(d.rewardStateText).toBe('$10 pending');
     });
 
-    it('marks a declined friend, using the program reward if needed', () => {
+    it('marks a declined friend, using the advocate amount if known', () => {
         const d = decorateFriend(
             { personId: 'p1', program: 'rf', status: 'declined' },
-            {},
             { rf: '$5' }
         );
         expect(d.rewardStateText).toBe('$5 declined');
@@ -135,13 +147,13 @@ describe('decorateFriend', () => {
         ).toBe('Reward declined');
     });
 
-    it('does not guess an amount for a friend with no decision', () => {
+    it('does not guess a status for a friend whose status is unknown', () => {
         const d = decorateFriend(
-            { personId: 'p1', program: 'rf' },
-            {},
+            { personId: 'p1', program: 'rf', status: null },
             { rf: '$5' }
         );
         expect(d.rewardStateText).toBe('');
+        expect(d.status).toBeNull();
     });
 
     it('links to the Salesforce record when there is one', () => {
@@ -167,9 +179,10 @@ describe('groupByProgram', () => {
     });
 
     it('passes the amounts down to each friend', () => {
-        const [g] = groupByProgram([{ personId: 'a', program: 'one' }], {
-            one: '$7'
-        });
+        const [g] = groupByProgram(
+            [{ personId: 'a', program: 'one', status: 'pending' }],
+            { one: '$7' }
+        );
         expect(g.friends[0].rewardStateText).toBe('$7 pending');
     });
 });
@@ -209,6 +222,6 @@ describe('attachRewards', () => {
         expect(out[1].reward).toBeNull();
         expect(out[1].status).toBe('declined');
         expect(out[2].reward).toBeNull();
-        expect(out[2].status).toBe('pending');
+        expect(out[2].status).toBeNull();
     });
 });

@@ -597,8 +597,6 @@ private class ExtolePersonCardControllerTest {
             .reward.amountLabel;
     }
 
-    // ── Reward states: rewarded, declined, not rewarded yet ──────────────────
-
     private static ExtolePersonCard.FriendRef refFor(
         ExtoleConfigurableMock mock
     ) {
@@ -622,7 +620,7 @@ private class ExtolePersonCardControllerTest {
         ExtolePersonCard.FriendRef ref = refFor(
             manyFriendsMock(1)
                 .addPattern(
-                    '/v5/persons/p_advocate/rewards',
+                    pageUrl('rewards', 0),
                     200,
                     '[{"id":"r1","state":"FULFILLED","face_value":5,"face_value_type":"USD",' +
                     '"data":{"other_person_id":{"value":"p_f0"}}}]'
@@ -642,7 +640,7 @@ private class ExtolePersonCardControllerTest {
             ExtolePersonCard.FriendRef ref = refFor(
                 manyFriendsMock(1)
                     .addPattern(
-                        '/v5/persons/p_advocate/rewards',
+                        pageUrl('rewards', 0),
                         200,
                         '[{"id":"r1","state":"' +
                             state +
@@ -675,7 +673,7 @@ private class ExtolePersonCardControllerTest {
     ) {
         return new ExtoleConfigurableMock()
             .addPattern(
-                '/v5/persons/p_advocate/steps?journey_names=reward',
+                '/steps?journey_names=reward&limit=100&offset=0',
                 status,
                 decisions
             )
@@ -685,11 +683,7 @@ private class ExtolePersonCardControllerTest {
                 '{"email":{"name":"email","value":"friend@example.com","scope":"PUBLIC"}}'
             )
             .addPattern('/steps', 200, '[]')
-            .addPattern(
-                '/v5/persons/p_advocate/relationships',
-                200,
-                advocateRels(1)
-            )
+            .addPattern(pageUrl('relationships', 0), 200, advocateRels(0, 1))
             .addPattern(
                 '/v5/persons?identity_key_value=',
                 200,
@@ -726,7 +720,6 @@ private class ExtolePersonCardControllerTest {
     @IsTest
     static void testTheNewestDecisionWins() {
         Test.startTest();
-        // Declined, then approved by hand later: not declined any more.
         ExtolePersonCard.FriendRef approved = refFor(
             decisionsMock(
                 200,
@@ -747,7 +740,6 @@ private class ExtolePersonCardControllerTest {
         );
         System.assertEquals('pending', approved.status);
 
-        // Approved, then declined by hand later: declined.
         ExtolePersonCard.FriendRef declined = refFor(
             decisionsMock(
                 200,
@@ -777,7 +769,7 @@ private class ExtolePersonCardControllerTest {
         ExtolePersonCard.FriendRef ref = refFor(
             manyFriendsMock(1)
                 .addPattern(
-                    '/v5/persons/p_advocate/rewards',
+                    pageUrl('rewards', 0),
                     200,
                     '[{"id":"r1","state":"EARNED","face_value":5,"face_value_type":"USD",' +
                         '"data":{"other_person_id":{"value":"p_f0"}}},' +
@@ -791,20 +783,71 @@ private class ExtolePersonCardControllerTest {
     }
 
     @IsTest
-    static void testAFailedDecisionLookupLeavesFriendsNotRewardedYet() {
+    static void testAFailedDecisionReadLeavesTheStatusUnknown() {
         Test.startTest();
         ExtolePersonCard.FriendRef ref = refFor(decisionsMock(500, '{}'));
         Test.stopTest();
 
-        System.assertEquals('pending', ref.status);
-        System.assertEquals(
-            1,
-            ExtolePersonCardController.getCardData('advocate@example.com')
-                .totalFriends
-        );
+        System.assertEquals(null, ref.status);
     }
 
-    // ── What a program pays ──────────────────────────────────────────────────
+    @IsTest
+    static void testDecisionsAtThePageLimitLeaveTheStatusUnknown() {
+        // Three full pages of decisions for other friends: a decline for
+        // this one could be on a page that was never read.
+        String filler = '[';
+        for (Integer i = 0; i < 100; i++) {
+            filler +=
+                (i > 0 ? ',' : '') +
+                '{"name":"reward_evaluated","event_date":"2026-11-18T00:00:00.000-08:00"}';
+        }
+        filler += ']';
+        ExtoleConfigurableMock capped = new ExtoleConfigurableMock();
+        for (Integer page = 0; page < 3; page++) {
+            capped.addPattern(
+                '/steps?journey_names=reward&limit=100&offset=' + (page * 100),
+                200,
+                filler
+            );
+        }
+        Test.startTest();
+        ExtolePersonCard.FriendRef ref = refFor(
+            withPersonLookups(
+                capped.addPattern(
+                    pageUrl('relationships', 0),
+                    200,
+                    advocateRels(0, 1)
+                )
+            )
+        );
+        Test.stopTest();
+
+        System.assertEquals(null, ref.status);
+    }
+
+    @IsTest
+    static void testRewardsAtThePageLimitLeaveOnlyTheStatusUnknown() {
+        ExtoleConfigurableMock mock = new ExtoleConfigurableMock();
+        String firstPage =
+            '[{"id":"r1","state":"EARNED","face_value":5,"face_value_type":"USD",' +
+            '"data":{"other_person_id":{"name":"other_person_id","value":"p_f0"}}},' +
+            filler(99).substring(1);
+        mock.addPattern(pageUrl('rewards', 0), 200, firstPage);
+        for (Integer page = 1; page < 10; page++) {
+            mock.addPattern(pageUrl('rewards', page), 200, filler(100));
+        }
+        mock.addPattern(pageUrl('relationships', 0), 200, advocateRels(0, 2));
+        Test.setMock(HttpCalloutMock.class, withPersonLookups(mock));
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals('rewarded', result.friendRefs[0].status);
+        System.assertEquals(null, result.friendRefs[1].status);
+    }
 
     private static ExtoleConfigurableMock amountsMock(String components) {
         return manyFriendsMock(1)
@@ -822,53 +865,78 @@ private class ExtolePersonCardControllerTest {
             .addPattern('/v2/campaigns/c1/components', 200, components);
     }
 
-    @IsTest
-    static void testTheAdvocatesAmountIsTheRewardNamedForTheAdvocate() {
-        Test.setMock(
-            HttpCalloutMock.class,
-            amountsMock(
-                '[{"name":"advocate_reward","types":["reward-v10.0"],' +
-                    '"variables":[{"name":"rewardSupplierId","values":{"default":"s2"}}]},' +
-                    '{"name":"friend_reward","types":["reward-v10.0"],' +
-                    '"variables":[{"name":"rewardSupplierId","values":{"default":"s1"}}]}]'
-            )
-        );
+    private static String role(String id, String name) {
+        return '{"id":"' +
+            id +
+            '","name":"' +
+            name +
+            '","types":["role-v10.0"],"component_ids":[]}';
+    }
 
-        Test.startTest();
-        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
-            'advocate@example.com'
-        );
-        Test.stopTest();
+    private static String reward(String name, String roleId, String supplier) {
+        return '{"id":"' +
+            name +
+            '","name":"' +
+            name +
+            '","types":["reward-v10.0"],"component_ids":["' +
+            roleId +
+            '"],' +
+            '"variables":[{"name":"rewardSupplierId","values":{"default":"' +
+            supplier +
+            '"}}]}';
+    }
 
-        System.assertEquals(
-            '$10',
-            result.advocateAmounts.get('referral-program')
-        );
+    private static String advocateAmount(String components) {
+        Test.setMock(HttpCalloutMock.class, amountsMock(components));
+        return ExtolePersonCardController.getCardData('advocate@example.com')
+            .advocateAmounts.get('referral-program');
     }
 
     @IsTest
-    static void testASingleUnnamedRewardIsNeverShownAgainstTheAdvocate() {
-        Test.setMock(
-            HttpCalloutMock.class,
-            amountsMock(
-                '[{"name":"reward","types":["reward-v10.0"],' +
-                '"variables":[{"name":"rewardSupplierId","values":{"default":"s1"}}]}]'
-            )
-        );
-
+    static void testTheAdvocatesAmountIsTheRewardUnderTheAdvocateRole() {
         Test.startTest();
-        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
-            'advocate@example.com'
+        String amount = advocateAmount(
+            '[' +
+                role('ra', 'advocate') +
+                ',' +
+                role('rf', 'friend') +
+                ',' +
+                reward('first', 'rf', 's1') +
+                ',' +
+                reward('second', 'ra', 's2') +
+                ']'
         );
         Test.stopTest();
 
-        // It isn't clear who it pays, so it is not the advocate's amount. It
-        // can still stand in for a declined friend whose amount is unknown.
-        System.assertEquals(
-            null,
-            result.advocateAmounts.get('referral-program')
+        System.assertEquals('$10', amount);
+    }
+
+    @IsTest
+    static void testARewardIsNotTheAdvocatesJustBecauseOfItsName() {
+        Test.startTest();
+        String amount = advocateAmount(
+            '[' +
+                role('ra', 'advocate') +
+                ',' +
+                role('rf', 'friend') +
+                ',' +
+                reward('advocate_reward', 'rf', 's1') +
+                ']'
         );
-        System.assertEquals('$5', result.onlyAmounts.get('referral-program'));
+        Test.stopTest();
+
+        System.assertEquals(null, amount);
+    }
+
+    @IsTest
+    static void testNoAdvocateAmountWhenTheCampaignHasNoAdvocateReward() {
+        Test.startTest();
+        String amount = advocateAmount(
+            '[' + role('rf', 'friend') + ',' + reward('r', 'rf', 's1') + ']'
+        );
+        Test.stopTest();
+
+        System.assertEquals(null, amount);
     }
 
     @IsTest

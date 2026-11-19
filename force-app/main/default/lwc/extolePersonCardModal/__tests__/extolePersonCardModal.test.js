@@ -18,8 +18,6 @@ jest.mock(
     { virtual: true }
 );
 
-// Every 7th friend is rewarded, every 11th of the rest is declined, the others
-// are pending. Of 100: 15 rewarded, 8 declined, 77 pending.
 function statusOf(i) {
     if (i % 7 === 0) return 'rewarded';
     return i % 11 === 0 ? 'declined' : 'pending';
@@ -191,6 +189,20 @@ describe('extolePersonCardModal', () => {
         expect(el.shadowRoot.querySelector('.pager-range').textContent).toBe(
             '1–10 of 100'
         );
+    });
+
+    it('lists a friend with an unknown status under All, not under Not rewarded yet', async () => {
+        const unknown = refs(3).map((r) => ({ ...r, status: null }));
+        const el = mount(unknown);
+        await settle();
+        expect(names(el)).toHaveLength(3);
+
+        [...el.shadowRoot.querySelectorAll('.chip')]
+            .find((c) => c.textContent.trim() === 'Not rewarded yet')
+            .click();
+        await settle();
+
+        expect(names(el)).toHaveLength(0);
     });
 
     it('says so when no friend matches the filter', async () => {

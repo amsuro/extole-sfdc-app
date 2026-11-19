@@ -58,16 +58,9 @@ export function attachRewards(friends, refs) {
         return {
             ...f,
             reward: (ref && ref.reward) || null,
-            status: (ref && ref.status) || 'pending'
+            status: (ref && ref.status) || null
         };
     });
-}
-
-// Where a friend's reward stands: given a reward, 'rewarded'; otherwise
-// 'declined' or 'pending' as the server found.
-export function rewardStatus(f) {
-    if (f.reward) return 'rewarded';
-    return f.status === 'declined' ? 'declined' : 'pending';
 }
 
 // What a reward's state means to a person. Earned in Extole is "earned"; sent or
@@ -79,12 +72,8 @@ const REWARD_STATE_WORDS = {
     REDEEMED: 'redeemed'
 };
 
-// How a reward is shown: one pill with the amount and where it stands, such as
-// "$5 pending", "$5 earned", "$5 sent" or "$5 declined", with the date once it
-// is earned. amountLabel is what the program pays, for a reward that has no
-// row yet. A pending reward with no known amount shows nothing.
-export function describeReward(f, amountLabel, declinedLabel) {
-    const status = rewardStatus(f);
+export function describeReward(f, amountLabel) {
+    const status = f.status;
     const earned = status === 'rewarded';
     const declined = status === 'declined';
     const word = earned
@@ -93,12 +82,8 @@ export function describeReward(f, amountLabel, declinedLabel) {
     const amount = earned ? f.reward.amountLabel : amountLabel;
     let text = '';
     if (earned) text = [amount || 'Reward', word].join(' ');
-    else if (declined) {
-        // A decline falls back to the program's one reward when the amount is
-        // otherwise unknown.
-        const shown = amount || declinedLabel;
-        text = shown ? `${shown} declined` : 'Reward declined';
-    } else if (amount) text = `${amount} pending`;
+    else if (declined) text = amount ? `${amount} declined` : 'Reward declined';
+    else if (status === 'pending' && amount) text = `${amount} pending`;
     return {
         status,
         earned,
@@ -109,12 +94,10 @@ export function describeReward(f, amountLabel, declinedLabel) {
     };
 }
 
-// amounts and declinedAmounts say what each program pays, by program.
-export function decorateFriend(f, amounts, declinedAmounts) {
+export function decorateFriend(f, amounts) {
     const { status, earned, declined, text, cls, dateText } = describeReward(
         f,
-        amounts && amounts[f.program],
-        declinedAmounts && declinedAmounts[f.program]
+        amounts && amounts[f.program]
     );
     const displayName = f.displayName || f.email || 'Anonymous';
     const milestones = (f.steps || []).map((st) => ({
@@ -142,7 +125,6 @@ export function decorateFriend(f, amounts, declinedAmounts) {
               : 'avatar avatar-neutral',
         avatarIsEarned: earned,
         avatarIsDeclined: declined,
-        // Nothing shows until there is an amount, a reward or a decline.
         rewardStateText: text,
         rewardStateClass: cls,
         rewardDateText: dateText,
@@ -151,10 +133,10 @@ export function decorateFriend(f, amounts, declinedAmounts) {
     };
 }
 
-export function groupByProgram(friends, amounts, declinedAmounts) {
+export function groupByProgram(friends, amounts) {
     const byProgram = new Map();
     for (const f of friends) {
-        const d = decorateFriend(f, amounts, declinedAmounts);
+        const d = decorateFriend(f, amounts);
         if (!byProgram.has(d.program)) byProgram.set(d.program, []);
         byProgram.get(d.program).push(d);
     }
