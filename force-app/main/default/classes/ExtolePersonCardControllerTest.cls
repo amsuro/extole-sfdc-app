@@ -210,10 +210,12 @@ private class ExtolePersonCardControllerTest {
 
     @IsTest
     static void testAttachSfdcLinksLinksPersonAccountToAccount() {
-        if (!ExtolePersonAccounts.isEnabled()) return;
+        if (!ExtolePersonAccounts.isEnabled())
+            return;
         Id personRt = (Id) Database.query(
-            'SELECT Id FROM RecordType WHERE SobjectType = \'Account\' AND IsPersonType = true LIMIT 1'
-        )[0].get('Id');
+                'SELECT Id FROM RecordType WHERE SobjectType = \'Account\' AND IsPersonType = true LIMIT 1'
+            )[0]
+            .get('Id');
         SObject pa = Schema.getGlobalDescribe().get('Account').newSObject();
         pa.put('RecordTypeId', personRt);
         pa.put('FirstName', 'Pat');
@@ -234,8 +236,11 @@ private class ExtolePersonCardControllerTest {
 
     @IsTest
     static void testShareLinkFieldForAccountUsesPersonSuffix() {
-        if (!ExtolePersonAccounts.isEnabled()) return;
-        String field = ExtoleBackfillController.getShareLinkFieldSetting('Account');
+        if (!ExtolePersonAccounts.isEnabled())
+            return;
+        String field = ExtoleBackfillController.getShareLinkFieldSetting(
+            'Account'
+        );
         System.assertEquals('Extole_Share_Link__pc', field);
     }
 }
