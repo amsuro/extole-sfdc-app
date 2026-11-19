@@ -31,12 +31,13 @@ async function settle() {
     for (let i = 0; i < 5; i++) await flush();
 }
 
-function mount(friendRefs, loaded = []) {
+function mount(friendRefs, loaded = [], friendsTruncated = false) {
     const el = createElement('c-extole-person-card-modal', {
         is: ExtolePersonCardModal
     });
     el.friendRefs = friendRefs;
     el.loaded = loaded;
+    el.friendsTruncated = friendsTruncated;
     document.body.appendChild(el);
     return el;
 }
@@ -68,11 +69,19 @@ describe('extolePersonCardModal', () => {
         expect(names(el)).toHaveLength(10);
         expect(names(el)[0]).toBe('Friend 0');
         expect(getFriendDetails).toHaveBeenCalledTimes(1);
-        // Plain lists of strings: an LWC cannot pass a list of Apex objects.
         expect(getFriendDetails.mock.calls[0][0].personIds).toHaveLength(10);
         expect(getFriendDetails.mock.calls[0][0].programs).toHaveLength(10);
         expect(el.shadowRoot.querySelector('.pager-range').textContent).toBe(
             '1–10 of 95'
+        );
+    });
+
+    it('shows a plus on the count when the card could not read every friend', async () => {
+        const el = mount(refs(1000), [], true);
+        await settle();
+
+        expect(el.shadowRoot.querySelector('.pager-range').textContent).toBe(
+            '1–10 of 1000+'
         );
     });
 

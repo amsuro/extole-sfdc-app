@@ -59,6 +59,15 @@ describe('decorateFriend', () => {
         expect(d.hasMilestones).toBe(false);
     });
 
+    it('says nothing about a reward it cannot rule out', () => {
+        const friend = { personId: 'p1', program: 'x', reward: null };
+
+        expect(decorateFriend(friend, true).rewardStateText).toBe('');
+        expect(decorateFriend(friend, false).rewardStateText).toBe(
+            'no reward yet'
+        );
+    });
+
     it('links to the Salesforce record when there is one', () => {
         const d = decorateFriend({
             personId: 'p1',

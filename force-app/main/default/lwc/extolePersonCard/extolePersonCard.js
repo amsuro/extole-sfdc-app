@@ -17,9 +17,6 @@ import LEAD_NAME from '@salesforce/schema/Lead.Name';
 import CONTACT_EMAIL from '@salesforce/schema/Contact.Email';
 import CONTACT_NAME from '@salesforce/schema/Contact.Name';
 
-// Friends shown at first, and added by each Show more.
-const FRIEND_BATCH = 5;
-
 export default class ExtolePersonCard extends LightningElement {
     @api recordId;
     @api objectApiName;
@@ -161,8 +158,27 @@ export default class ExtolePersonCard extends LightningElement {
         return this.card ? this.card.totalFriends || 0 : 0;
     }
 
+    // The server sends one batch up front; Show more adds the same number.
+    get friendBatch() {
+        return this.card && this.card.friends ? this.card.friends.length : 0;
+    }
+
+    get friendsTruncated() {
+        return !!(this.card && this.card.friendsTruncated);
+    }
+
+    get rewardsTruncated() {
+        return !!(this.card && this.card.rewardsTruncated);
+    }
+
+    get totalFriendsText() {
+        return this.friendsTruncated
+            ? `${this.totalFriends}+`
+            : `${this.totalFriends}`;
+    }
+
     get friendsExpandable() {
-        return this.totalFriends > FRIEND_BATCH;
+        return this.totalFriends > this.friendBatch;
     }
 
     get friendsShowMoreVisible() {
@@ -170,7 +186,7 @@ export default class ExtolePersonCard extends LightningElement {
     }
 
     get friendsCountText() {
-        return `Showing ${this.friendsLoaded.length} of ${this.totalFriends}`;
+        return `Showing ${this.friendsLoaded.length} of ${this.totalFriendsText}`;
     }
 
     get hasReferredBy() {
@@ -217,16 +233,15 @@ export default class ExtolePersonCard extends LightningElement {
     }
 
     get programGroups() {
-        return groupByProgram(this.friendsLoaded);
+        return groupByProgram(this.friendsLoaded, this.rewardsTruncated);
     }
 
-    // Adds the next batch of friends, skipping any already loaded.
     async handleShowMore() {
         if (this.isLoadingMore) return;
         const have = new Set(this.friendsLoaded.map((f) => f.personId));
         const next = (this.card.friendRefs || [])
             .filter((r) => !have.has(r.personId))
-            .slice(0, FRIEND_BATCH);
+            .slice(0, this.friendBatch);
         if (next.length === 0) return;
         this.isLoadingMore = true;
         this.loadError = null;
@@ -254,7 +269,9 @@ export default class ExtolePersonCard extends LightningElement {
         await ExtolePersonCardModal.open({
             size: 'large',
             friendRefs: this.card.friendRefs || [],
-            loaded: this.friendsLoaded
+            loaded: this.friendsLoaded,
+            friendsTruncated: this.friendsTruncated,
+            rewardsTruncated: this.rewardsTruncated
         });
     }
 
@@ -352,6 +369,6 @@ export default class ExtolePersonCard extends LightningElement {
     get friendsLabel() {
         return this.friendsExpanded
             ? 'Friends'
-            : `Friends (${this.totalFriends})`;
+            : `Friends (${this.totalFriendsText})`;
     }
 }

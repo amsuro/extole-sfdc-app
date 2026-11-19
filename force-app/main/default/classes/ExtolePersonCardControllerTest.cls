@@ -244,13 +244,11 @@ private class ExtolePersonCardControllerTest {
         System.assertEquals('Extole_Share_Link__pc', field);
     }
 
-    // ── Every friend, not just the first 25 ──────────────────────────────────
-
-    private static String advocateRels(Integer count) {
+    private static String advocateRels(Integer first, Integer count) {
         String body = '[';
-        for (Integer i = 0; i < count; i++) {
+        for (Integer i = first; i < first + count; i++) {
             body +=
-                (i > 0 ? ',' : '') +
+                (i > first ? ',' : '') +
                 '{"my_role":"ADVOCATE","other_person_id":"p_f' +
                 i +
                 '","program":"referral-program"}';
@@ -258,19 +256,32 @@ private class ExtolePersonCardControllerTest {
         return body + ']';
     }
 
+    private static String pageUrl(String resource, Integer page) {
+        return '/' + resource + '?limit=100&offset=' + (page * 100);
+    }
+
+    // Relationships served a hundred to a page.
     private static ExtoleConfigurableMock manyFriendsMock(Integer count) {
-        return new ExtoleConfigurableMock()
-            .addPattern(
+        ExtoleConfigurableMock mock = new ExtoleConfigurableMock();
+        for (Integer page = 0; page * 100 < count; page++) {
+            mock.addPattern(
+                pageUrl('relationships', page),
+                200,
+                advocateRels(page * 100, Math.min(100, count - page * 100))
+            );
+        }
+        return withPersonLookups(mock);
+    }
+
+    private static ExtoleConfigurableMock withPersonLookups(
+        ExtoleConfigurableMock mock
+    ) {
+        return mock.addPattern(
                 '/data',
                 200,
                 '{"email":{"name":"email","value":"friend@example.com","scope":"PUBLIC"}}'
             )
             .addPattern('/steps', 200, '[]')
-            .addPattern(
-                '/v5/persons/p_advocate/relationships',
-                200,
-                advocateRels(count)
-            )
             .addPattern(
                 '/v5/persons?identity_key_value=',
                 200,
@@ -282,6 +293,19 @@ private class ExtolePersonCardControllerTest {
                 '{"id":"p_f","identity_key":"email","identity_key_value":"friend@example.com"}'
             )
             .withDefault(200, '[]');
+    }
+
+    // Rewards that don't match a friend, only there to fill pages.
+    private static String filler(Integer count) {
+        String body = '[';
+        for (Integer i = 0; i < count; i++) {
+            body +=
+                (i > 0 ? ',' : '') +
+                '{"id":"r' +
+                i +
+                '","state":"CANCELED"}';
+        }
+        return body + ']';
     }
 
     @IsTest
@@ -302,9 +326,77 @@ private class ExtolePersonCardControllerTest {
     }
 
     @IsTest
-    static void testFriendsPastTheOldFiftyRelationshipLimitAreCounted() {
-        // The relationships come back a page at a time, 100 per page.
-        Test.setMock(HttpCalloutMock.class, manyFriendsMock(100));
+    static void testFriendsPastTheFirstPageAreCounted() {
+        Test.setMock(HttpCalloutMock.class, manyFriendsMock(120));
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals(120, result.totalFriends);
+        System.assertEquals(false, result.friendsTruncated);
+    }
+
+    @IsTest
+    static void testAShortPageDoesNotEndThePaging() {
+        // The API drops deleted persons after paging, so page one can come
+        // back with 90 of 100 and page two still has friends.
+        ExtoleConfigurableMock mock = new ExtoleConfigurableMock()
+            .addPattern(pageUrl('relationships', 0), 200, advocateRels(0, 90))
+            .addPattern(pageUrl('relationships', 1), 200, advocateRels(90, 30));
+        Test.setMock(HttpCalloutMock.class, withPersonLookups(mock));
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals(120, result.totalFriends);
+    }
+
+    @IsTest
+    static void testFriendsAtThePageLimitAreFlaggedTruncated() {
+        Test.setMock(HttpCalloutMock.class, manyFriendsMock(1000));
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals(1000, result.totalFriends);
+        System.assertEquals(true, result.friendsTruncated);
+        System.assertEquals(false, result.rewardsTruncated);
+    }
+
+    @IsTest
+    static void testRewardsAtThePageLimitAreFlaggedTruncated() {
+        ExtoleConfigurableMock mock = new ExtoleConfigurableMock();
+        for (Integer page = 0; page < 10; page++) {
+            mock.addPattern(pageUrl('rewards', page), 200, filler(100));
+        }
+        Test.setMock(HttpCalloutMock.class, withPersonLookups(mock));
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals(true, result.rewardsTruncated);
+        System.assertEquals(false, result.friendsTruncated);
+    }
+
+    @IsTest
+    static void testAFailedReadIsFlaggedTruncated() {
+        ExtoleConfigurableMock mock = new ExtoleConfigurableMock()
+            .addPattern(pageUrl('relationships', 0), 200, advocateRels(0, 100))
+            .addPattern(pageUrl('relationships', 1), 500, '{"error":"boom"}')
+            .addPattern('/rewards', 500, '{"error":"boom"}');
+        Test.setMock(HttpCalloutMock.class, withPersonLookups(mock));
 
         Test.startTest();
         ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
@@ -313,6 +405,8 @@ private class ExtolePersonCardControllerTest {
         Test.stopTest();
 
         System.assertEquals(100, result.totalFriends);
+        System.assertEquals(true, result.friendsTruncated);
+        System.assertEquals(true, result.rewardsTruncated);
     }
 
     @IsTest
@@ -333,10 +427,10 @@ private class ExtolePersonCardControllerTest {
     }
 
     @IsTest
-    static void testGetFriendDetailsLoadsAtMostOneBatchPerCall() {
+    static void testGetFriendDetailsStopsAtTheCalloutLimit() {
         Test.setMock(HttpCalloutMock.class, manyFriendsMock(0));
         List<String> ids = new List<String>();
-        for (Integer i = 0; i < 40; i++) {
+        for (Integer i = 0; i < 50; i++) {
             ids.add('p_f' + i);
         }
 
@@ -347,8 +441,29 @@ private class ExtolePersonCardControllerTest {
         );
         Test.stopTest();
 
-        System.assertEquals(20, friends.size());
+        // Three callouts a friend against a limit of 100.
+        System.assertEquals(33, friends.size());
         System.assertEquals('p_f0', friends[0].personId);
+        System.assertEquals('p_f32', friends[32].personId);
+    }
+
+    @IsTest
+    static void testAFriendWhoseLookupFailsStaysInTheResultUnnamed() {
+        ExtoleConfigurableMock mock = new ExtoleConfigurableMock()
+            .addPattern('/v5/persons/p_bad', 500, '{"error":"boom"}');
+        Test.setMock(HttpCalloutMock.class, withPersonLookups(mock));
+
+        Test.startTest();
+        List<ExtolePersonCard.Friend> friends = ExtolePersonCardController.getFriendDetails(
+            new List<String>{ 'p_f1', 'p_bad', 'p_f2' },
+            null
+        );
+        Test.stopTest();
+
+        System.assertEquals(3, friends.size());
+        System.assertEquals('p_bad', friends[1].personId);
+        System.assertEquals(null, friends[1].email);
+        System.assertEquals('friend@example.com', friends[2].email);
     }
 
     @IsTest

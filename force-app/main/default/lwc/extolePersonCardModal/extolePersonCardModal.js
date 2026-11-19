@@ -8,14 +8,12 @@ import {
 } from 'c/extolePersonCardUtils';
 
 const PAGE_SIZE = 10;
-// What one getFriendDetails call is allowed to load.
-const LOAD_BATCH = 20;
 
-// Every friend, ten to a page. A page's friends are looked up when it opens.
 export default class ExtolePersonCardModal extends LightningModal {
     @api friendRefs = [];
-    // Friends the card has already loaded, so they are not fetched again.
     @api loaded = [];
+    @api friendsTruncated = false;
+    @api rewardsTruncated = false;
 
     byId = {};
     page = 0;
@@ -33,6 +31,10 @@ export default class ExtolePersonCardModal extends LightningModal {
         return (this.friendRefs || []).length;
     }
 
+    get totalText() {
+        return this.friendsTruncated ? `${this.total}+` : `${this.total}`;
+    }
+
     get pageRefs() {
         const start = this.page * PAGE_SIZE;
         return (this.friendRefs || []).slice(start, start + PAGE_SIZE);
@@ -40,18 +42,19 @@ export default class ExtolePersonCardModal extends LightningModal {
 
     get groups() {
         return groupByProgram(
-            this.pageRefs.map((r) => this.byId[r.personId]).filter(Boolean)
+            this.pageRefs.map((r) => this.byId[r.personId]).filter(Boolean),
+            this.rewardsTruncated
         );
     }
 
     get headerLabel() {
-        return `Friends (${this.total})`;
+        return `Friends (${this.totalText})`;
     }
 
     get rangeText() {
         const start = this.page * PAGE_SIZE + 1;
         const end = Math.min(start + PAGE_SIZE - 1, this.total);
-        return `${start}–${end} of ${this.total}`;
+        return `${start}–${end} of ${this.totalText}`;
     }
 
     get hasPrev() {
@@ -90,7 +93,7 @@ export default class ExtolePersonCardModal extends LightningModal {
             while (missing().length > 0) {
                 // Each call has to finish before the next, because it only
                 // returns what fits under the callout limit.
-                const asked = missing().slice(0, LOAD_BATCH);
+                const asked = missing();
                 // eslint-disable-next-line no-await-in-loop
                 const got = await getFriendDetails(detailsArgs(asked));
                 if (!got || got.length === 0) {

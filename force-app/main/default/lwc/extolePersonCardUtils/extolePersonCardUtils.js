@@ -1,5 +1,3 @@
-// Shared by the person card and its friends list.
-
 const PALETTE = [
     { primary: '#1D9E75', fill: 'rgba(29, 158, 117, 0.12)' },
     { primary: '#2563EB', fill: 'rgba(37, 99, 235, 0.10)' },
@@ -45,8 +43,7 @@ export function formatShortDate(iso) {
     return `${mm}/${dd}/${yy}`;
 }
 
-// The arguments getFriendDetails takes for some friend references: plain lists
-// of strings, because an LWC cannot pass a list of Apex objects.
+// Plain string lists: an LWC cannot pass a list of Apex objects to Apex.
 export function detailsArgs(refs) {
     return {
         personIds: (refs || []).map((r) => r.personId),
@@ -54,8 +51,6 @@ export function detailsArgs(refs) {
     };
 }
 
-// Puts each reference's reward back on the friend loaded for it. The rewards
-// are already known to the card, so the server doesn't send them again.
 export function attachRewards(friends, refs) {
     const rewardById = new Map((refs || []).map((r) => [r.personId, r.reward]));
     return (friends || []).map((f) => ({
@@ -64,8 +59,7 @@ export function attachRewards(friends, refs) {
     }));
 }
 
-// What a friend row shows, from a friend as the server sends it.
-export function decorateFriend(f) {
+export function decorateFriend(f, rewardsTruncated = false) {
     const earned =
         f.reward &&
         (f.reward.state === 'PAID' ||
@@ -98,18 +92,21 @@ export function decorateFriend(f) {
         avatarClass: earned ? 'avatar avatar-success' : 'avatar avatar-neutral',
         avatarIsEarned: earned,
         statusText,
-        rewardStateText: earned ? f.reward.amountLabel : 'no reward yet',
+        rewardStateText: earned
+            ? f.reward.amountLabel
+            : rewardsTruncated
+              ? ''
+              : 'no reward yet',
         rewardStateClass: earned ? 'reward-amount-earned' : 'reward-pending',
         milestones,
         hasMilestones: milestones.length > 0
     };
 }
 
-// Friends grouped by program, in the order each program first appears.
-export function groupByProgram(friends) {
+export function groupByProgram(friends, rewardsTruncated = false) {
     const byProgram = new Map();
     for (const f of friends) {
-        const d = decorateFriend(f);
+        const d = decorateFriend(f, rewardsTruncated);
         if (!byProgram.has(d.program)) byProgram.set(d.program, []);
         byProgram.get(d.program).push(d);
     }

@@ -1,12 +1,8 @@
 public with sharing class ExtolePersonCardController {
-    // Friends whose details load with the card; the rest load as they are asked for.
     private static final Integer FRIEND_BATCH = 5;
-    // Friends one getFriendDetails call may load.
-    private static final Integer DETAILS_MAX = 20;
     // A friend costs about three callouts (person, data, steps) and a
     // transaction allows 100, so loading everyone at once is not possible.
     private static final Integer CALLOUTS_PER_FRIEND = 3;
-    private static final Integer CALLOUT_RESERVE = 6;
     private static final Integer PAGE_SIZE = 100;
     private static final Integer MAX_PAGES = 10;
 
@@ -27,15 +23,17 @@ public with sharing class ExtolePersonCardController {
 
             result.shareLinks = fetchShareLinks(config, client, personId);
 
-            List<Map<String, Object>> rels = fetchRelationships(
+            Pages relPages = fetchPages(
                 config,
                 client,
-                personId
+                personId,
+                'relationships'
             );
-            Map<String, ExtolePersonCard.Reward> rewardsByFriendId = fetchRewards(
-                config,
-                client,
-                personId
+            Pages rewardPages = fetchPages(config, client, personId, 'rewards');
+            result.friendsTruncated = relPages.truncated;
+            result.rewardsTruncated = rewardPages.truncated;
+            Map<String, ExtolePersonCard.Reward> rewardsByFriendId = rewardsByFriend(
+                rewardPages.rows
             );
 
             Set<String> seenFriendIds = new Set<String>();
@@ -43,7 +41,8 @@ public with sharing class ExtolePersonCardController {
             Map<String, String> personIdToProgram = new Map<String, String>();
             Set<String> friendPrograms = new Set<String>();
 
-            for (Map<String, Object> rel : rels) {
+            for (Object relRaw : relPages.rows) {
+                Map<String, Object> rel = (Map<String, Object>) relRaw;
                 String role = getString(rel, 'my_role');
                 String otherId = getString(rel, 'other_person_id');
                 if (otherId == null)
@@ -56,7 +55,6 @@ public with sharing class ExtolePersonCardController {
                     ref.program = getString(rel, 'program');
                     ref.reward = rewardsByFriendId.get(otherId);
                     result.friendRefs.add(ref);
-                    // Only the first batch is looked up now.
                     if (result.friends.size() < FRIEND_BATCH) {
                         ExtolePersonCard.Friend f = new ExtolePersonCard.Friend();
                         f.personId = otherId;
@@ -202,10 +200,6 @@ public with sharing class ExtolePersonCardController {
         return out;
     }
 
-    // Looks up the next batch of friends. Stops short of Salesforce's callout
-    // limit, so the card asks again for whoever is missing from the result.
-    // The two lists line up by position. They are plain strings because an
-    // LWC cannot pass a list of Apex objects to an Apex method.
     @AuraEnabled
     public static List<ExtolePersonCard.Friend> getFriendDetails(
         List<String> personIds,
@@ -227,8 +221,6 @@ public with sharing class ExtolePersonCardController {
                 String pid = personIds[i];
                 if (String.isBlank(pid) || friendById.containsKey(pid))
                     continue;
-                if (toFetch.size() >= DETAILS_MAX)
-                    break;
                 String program = programs != null &&
                     i < programs.size()
                     ? programs[i]
@@ -259,7 +251,6 @@ public with sharing class ExtolePersonCardController {
             List<String> emails = new List<String>();
             for (String pid : toFetch) {
                 PersonProfile profile = profileById.get(pid);
-                // A friend that wasn't reached is left out, so the card asks again.
                 if (profile == null)
                     continue;
                 ExtolePersonCard.Friend f = friendById.get(pid);
@@ -370,12 +361,22 @@ public with sharing class ExtolePersonCardController {
         return out;
     }
 
-    private static List<Map<String, Object>> fetchRelationships(
+    private class Pages {
+        List<Object> rows = new List<Object>();
+        // True when there may be more than rows holds: the page limit was hit
+        // or a read failed.
+        Boolean truncated = false;
+    }
+
+    // Reads a person's relationships or rewards. An empty page ends it: the
+    // API drops deleted persons after paging, so a short page can have more.
+    private static Pages fetchPages(
         ExtoleConfig config,
         ExtoleClient client,
-        String personId
+        String personId,
+        String resource
     ) {
-        List<Map<String, Object>> out = new List<Map<String, Object>>();
+        Pages out = new Pages();
         for (Integer page = 0; page < MAX_PAGES; page++) {
             HttpRequest req = new HttpRequest();
             req.setEndpoint(
@@ -383,7 +384,9 @@ public with sharing class ExtolePersonCardController {
                     ExtoleConstants.PEOPLE_PATH +
                     '/' +
                     personId +
-                    '/relationships?limit=' +
+                    '/' +
+                    resource +
+                    '?limit=' +
                     PAGE_SIZE +
                     '&offset=' +
                     (page * PAGE_SIZE)
@@ -394,104 +397,71 @@ public with sharing class ExtolePersonCardController {
             req.setTimeout(config.timeoutMs);
 
             HttpResponse res = client.send(config, req);
-            if (res.getStatusCode() < 200 || res.getStatusCode() >= 300)
-                break;
-
+            if (res.getStatusCode() < 200 || res.getStatusCode() >= 300) {
+                out.truncated = true;
+                return out;
+            }
             List<Object> raw = (List<Object>) JSON.deserializeUntyped(
                 res.getBody()
             );
-            if (raw == null)
-                break;
-            for (Object o : raw) {
-                out.add((Map<String, Object>) o);
-            }
-            if (raw.size() < PAGE_SIZE)
-                break;
+            if (raw == null || raw.isEmpty())
+                return out;
+            out.rows.addAll(raw);
         }
+        out.truncated = true;
         return out;
     }
 
-    private static Map<String, ExtolePersonCard.Reward> fetchRewards(
-        ExtoleConfig config,
-        ExtoleClient client,
-        String personId
+    private static Map<String, ExtolePersonCard.Reward> rewardsByFriend(
+        List<Object> raw
     ) {
         Map<String, ExtolePersonCard.Reward> out = new Map<String, ExtolePersonCard.Reward>();
-        for (Integer page = 0; page < MAX_PAGES; page++) {
-            HttpRequest req = new HttpRequest();
-            req.setEndpoint(
-                config.getEndpoint() +
-                    ExtoleConstants.PEOPLE_PATH +
-                    '/' +
-                    personId +
-                    '/rewards?limit=' +
-                    PAGE_SIZE +
-                    '&offset=' +
-                    (page * PAGE_SIZE)
-            );
-            req.setMethod('GET');
-            if (!config.isNamedCredentialMode())
-                req.setHeader('Authorization', config.getAuthHeader());
-            req.setTimeout(config.timeoutMs);
+        for (Object o : raw) {
+            Map<String, Object> m = (Map<String, Object>) o;
+            String state = getString(m, 'state');
+            if (state != 'SENT' && state != 'EARNED' && state != 'PAID')
+                continue;
 
-            HttpResponse res = client.send(config, req);
-            if (res.getStatusCode() < 200 || res.getStatusCode() >= 300)
-                break;
+            Object dataRaw = m.get('data');
+            if (!(dataRaw instanceof Map<String, Object>))
+                continue;
+            Map<String, Object> data = (Map<String, Object>) dataRaw;
+            String friendId = getString(data, 'other_person_id');
+            if (friendId == null || out.containsKey(friendId))
+                continue;
 
-            List<Object> raw = (List<Object>) JSON.deserializeUntyped(
-                res.getBody()
-            );
-            if (raw == null)
-                break;
-            for (Object o : raw) {
-                Map<String, Object> m = (Map<String, Object>) o;
-                String state = getString(m, 'state');
-                if (state != 'SENT' && state != 'EARNED' && state != 'PAID')
-                    continue;
-
-                Object dataRaw = m.get('data');
-                if (!(dataRaw instanceof Map<String, Object>))
-                    continue;
-                Map<String, Object> data = (Map<String, Object>) dataRaw;
-                String friendId = getString(data, 'other_person_id');
-                if (friendId == null || out.containsKey(friendId))
-                    continue;
-
-                ExtolePersonCard.Reward r = new ExtolePersonCard.Reward();
-                r.rewardId = getString(m, 'reward_id');
-                r.state = state;
-                r.faceValueType = getString(m, 'face_value_type');
-                r.dateEarned = getString(m, 'date_earned');
-                r.programLabel = getString(m, 'program_label');
-                r.campaignId = getString(m, 'campaign_id');
-                Object fv = m.get('face_value');
-                if (fv != null) {
-                    try {
-                        r.faceValue = Decimal.valueOf(String.valueOf(fv));
-                    } catch (Exception ignored) {
-                    }
+            ExtolePersonCard.Reward r = new ExtolePersonCard.Reward();
+            r.rewardId = getString(m, 'reward_id');
+            r.state = state;
+            r.faceValueType = getString(m, 'face_value_type');
+            r.dateEarned = getString(m, 'date_earned');
+            r.programLabel = getString(m, 'program_label');
+            r.campaignId = getString(m, 'campaign_id');
+            Object fv = m.get('face_value');
+            if (fv != null) {
+                try {
+                    r.faceValue = Decimal.valueOf(String.valueOf(fv));
+                } catch (Exception ignored) {
                 }
-                if (r.faceValue != null) {
-                    Map<String, String> SYMBOLS = new Map<String, String>{
-                        'usd' => '$',
-                        'gbp' => '£',
-                        'eur' => '€',
-                        'jpy' => '¥',
-                        'percent_off' => '%'
-                    };
-                    String sym = SYMBOLS.containsKey(r.faceValueType)
-                        ? SYMBOLS.get(r.faceValueType)
-                        : (r.faceValueType != null ? r.faceValueType : '');
-                    r.amountLabel =
-                        sym +
-                        String.valueOf(
-                            r.faceValue.setScale(0, System.RoundingMode.HALF_UP)
-                        );
-                }
-                out.put(friendId, r);
             }
-            if (raw.size() < PAGE_SIZE)
-                break;
+            if (r.faceValue != null) {
+                Map<String, String> SYMBOLS = new Map<String, String>{
+                    'usd' => '$',
+                    'gbp' => '£',
+                    'eur' => '€',
+                    'jpy' => '¥',
+                    'percent_off' => '%'
+                };
+                String sym = SYMBOLS.containsKey(r.faceValueType)
+                    ? SYMBOLS.get(r.faceValueType)
+                    : (r.faceValueType != null ? r.faceValueType : '');
+                r.amountLabel =
+                    sym +
+                    String.valueOf(
+                        r.faceValue.setScale(0, System.RoundingMode.HALF_UP)
+                    );
+            }
+            out.put(friendId, r);
         }
         return out;
     }
@@ -511,6 +481,14 @@ public with sharing class ExtolePersonCardController {
         }
     }
 
+    private static PersonProfile unnamedProfile() {
+        return new PersonProfile(
+            null,
+            null,
+            new List<ExtolePersonCard.JourneyStep>()
+        );
+    }
+
     private static Map<String, PersonProfile> fetchPersonProfiles(
         ExtoleConfig config,
         ExtoleClient client,
@@ -520,9 +498,8 @@ public with sharing class ExtolePersonCardController {
     ) {
         Map<String, PersonProfile> out = new Map<String, PersonProfile>();
         for (String pid : personIds) {
-            // Leave room under the callout limit; the card asks again for the rest.
             if (
-                Limits.getCallouts() + CALLOUTS_PER_FRIEND + CALLOUT_RESERVE >
+                Limits.getCallouts() + CALLOUTS_PER_FRIEND >
                 Limits.getLimitCallouts()
             )
                 break;
@@ -538,6 +515,7 @@ public with sharing class ExtolePersonCardController {
                             ' status=' +
                             res.getStatusCode()
                     );
+                    out.put(pid, unnamedProfile());
                     continue;
                 }
                 ExtolePerson p = ExtolePerson.fromMap(
@@ -596,6 +574,7 @@ public with sharing class ExtolePersonCardController {
                         ': ' +
                         e.getMessage()
                 );
+                out.put(pid, unnamedProfile());
             }
         }
         return out;
