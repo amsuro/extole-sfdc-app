@@ -492,4 +492,103 @@ private class ExtolePersonCardControllerTest {
         );
         Test.stopTest();
     }
+
+    // ── Rewards in the shape Extole really returns ───────────────────────────
+
+    // One friend whose reward is the given JSON row.
+    private static ExtolePersonCard.Friend friendWithReward(String rewardRow) {
+        Test.setMock(
+            HttpCalloutMock.class,
+            manyFriendsMock(1)
+                .addPattern(
+                    '/v5/persons/p_advocate/rewards',
+                    200,
+                    '[' + rewardRow + ']'
+                )
+        );
+        return ExtolePersonCardController.getCardData('advocate@example.com')
+            .friends[0];
+    }
+
+    @IsTest
+    static void testRewardInTheShapeExtoleReturns() {
+        // Other person as {name, value}, id under "id", date under earned_date,
+        // upper-case face value type, program under "program".
+        Test.startTest();
+        ExtolePersonCard.Friend f = friendWithReward(
+            '{"id":"r9","state":"FULFILLED","face_value":5.0,"face_value_type":"USD",' +
+                '"earned_date":"2026-11-18T08:21:25.891-08:00","program":"referral-program",' +
+                '"data":{"other_person_id":{"name":"other_person_id","value":"p_f0"}}}'
+        );
+        Test.stopTest();
+
+        System.assertNotEquals(null, f.reward);
+        System.assertEquals('r9', f.reward.rewardId);
+        System.assertEquals('FULFILLED', f.reward.state);
+        System.assertEquals('$5', f.reward.amountLabel);
+        System.assertEquals(
+            '2026-11-18T08:21:25.891-08:00',
+            f.reward.dateEarned
+        );
+        System.assertEquals('referral-program', f.reward.programLabel);
+    }
+
+    @IsTest
+    static void testRewardedStatesAreEarnedSentAndRedeemed() {
+        Test.startTest();
+        for (
+            String state : new List<String>{
+                'EARNED',
+                'FULFILLED',
+                'SENT',
+                'REDEEMED'
+            }
+        ) {
+            ExtolePersonCard.Friend f = friendWithReward(
+                '{"id":"r1","state":"' +
+                    state +
+                    '","face_value":5,"face_value_type":"USD",' +
+                    '"data":{"other_person_id":"p_f0"}}'
+            );
+            System.assertNotEquals(
+                null,
+                f.reward,
+                state + ' is a reward that went out'
+            );
+        }
+        ExtolePersonCard.Friend failed = friendWithReward(
+            '{"id":"r1","state":"FAILED","face_value":5,"face_value_type":"USD",' +
+            '"data":{"other_person_id":"p_f0"}}'
+        );
+        Test.stopTest();
+
+        System.assertEquals(
+            null,
+            failed.reward,
+            'a failed reward did not go out'
+        );
+    }
+
+    @IsTest
+    static void testAmountsReadTheWayAPersonWouldSayThem() {
+        Test.startTest();
+        System.assertEquals('$5', amountOf('5.0', 'USD'));
+        System.assertEquals('$12.50', amountOf('12.5', 'USD'));
+        System.assertEquals('20%', amountOf('20', 'PERCENT_OFF'));
+        System.assertEquals('500 points', amountOf('500', 'POINTS'));
+        System.assertEquals('£10', amountOf('10', 'GBP'));
+        System.assertEquals('7 CHF', amountOf('7', 'CHF'));
+        Test.stopTest();
+    }
+
+    private static String amountOf(String faceValue, String faceValueType) {
+        return friendWithReward(
+                '{"id":"r1","state":"EARNED","face_value":' +
+                    faceValue +
+                    ',"face_value_type":"' +
+                    faceValueType +
+                    '","data":{"other_person_id":"p_f0"}}'
+            )
+            .reward.amountLabel;
+    }
 }

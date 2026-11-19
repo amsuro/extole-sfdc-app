@@ -79,6 +79,18 @@ describe('decorateFriend', () => {
     });
 });
 
+describe('a reward that went out', () => {
+    it('counts for every state the server sends', () => {
+        for (const state of ['EARNED', 'FULFILLED', 'SENT', 'REDEEMED']) {
+            const d = decorateFriend({
+                personId: 'p1',
+                reward: { state, amountLabel: '$5' }
+            });
+            expect(d.rewardStateText).toBe('$5');
+        }
+    });
+});
+
 describe('groupByProgram', () => {
     it('groups friends under their program in first-seen order', () => {
         const groups = groupByProgram([
