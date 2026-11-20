@@ -1,52 +1,21 @@
 import { LightningElement, api, wire, track } from 'lwc';
 import { getRecord, getFieldValue } from 'lightning/uiRecordApi';
 import getCardData from '@salesforce/apex/ExtolePersonCardController.getCardData';
+import getFriendDetails from '@salesforce/apex/ExtolePersonCardController.getFriendDetails';
 import getShareLinkFieldSetting from '@salesforce/apex/ExtoleBackfillController.getShareLinkFieldSetting';
+import ExtolePersonCardModal from 'c/extolePersonCardModal';
+import {
+    programColors,
+    computeInitials,
+    groupByProgram,
+    detailsArgs,
+    attachRewards
+} from 'c/extolePersonCardUtils';
 
 import LEAD_EMAIL from '@salesforce/schema/Lead.Email';
 import LEAD_NAME from '@salesforce/schema/Lead.Name';
 import CONTACT_EMAIL from '@salesforce/schema/Contact.Email';
 import CONTACT_NAME from '@salesforce/schema/Contact.Name';
-
-const PALETTE = [
-    { primary: '#1D9E75', fill: 'rgba(29, 158, 117, 0.12)' },
-    { primary: '#2563EB', fill: 'rgba(37, 99, 235, 0.10)' },
-    { primary: '#8B5CF6', fill: 'rgba(139, 92, 246, 0.10)' },
-    { primary: '#F97316', fill: 'rgba(249, 115, 22, 0.12)' },
-    { primary: '#E94560', fill: 'rgba(233, 69, 96, 0.10)' }
-];
-
-function hashProgram(name) {
-    if (!name) return 0;
-    let h = 0;
-    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-    return Math.abs(h) % PALETTE.length;
-}
-
-function programColors(name) {
-    return PALETTE[hashProgram(name)];
-}
-
-function computeInitials(name) {
-    if (!name) return '?';
-    const trimmed = String(name).trim();
-    if (!trimmed) return '?';
-    const parts = trimmed.split(/\s+/);
-    if (parts.length >= 2) {
-        return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
-    return trimmed.substring(0, 2).toUpperCase();
-}
-
-function formatShortDate(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const yy = String(d.getFullYear()).slice(-2);
-    return `${mm}/${dd}/${yy}`;
-}
 
 export default class ExtolePersonCard extends LightningElement {
     @api recordId;
@@ -55,6 +24,8 @@ export default class ExtolePersonCard extends LightningElement {
 
     @track card = null;
     @track isLoading = false;
+    @track isLoadingMore = false;
+    @track friendsLoaded = [];
     @track loadError = null;
     @track sectionCollapsed = {
         shareLinks: false,
@@ -105,9 +76,7 @@ export default class ExtolePersonCard extends LightningElement {
         if (data) {
             const shareFieldName = this.configuredShareLinkField;
             this.sfdcShareLink =
-                shareFieldName &&
-                data.fields &&
-                data.fields[shareFieldName]
+                shareFieldName && data.fields && data.fields[shareFieldName]
                     ? data.fields[shareFieldName].value
                     : null;
             if (this.isAccount) {
@@ -157,6 +126,7 @@ export default class ExtolePersonCard extends LightningElement {
         this.loadError = null;
         try {
             this.card = await getCardData({ email: this.email });
+            this.friendsLoaded = (this.card && this.card.friends) || [];
         } catch (e) {
             this.loadError =
                 (e && e.body && e.body.message) ||
@@ -181,7 +151,41 @@ export default class ExtolePersonCard extends LightningElement {
     }
 
     get hasFriends() {
-        return this.card && this.card.friends && this.card.friends.length > 0;
+        return this.totalFriends > 0;
+    }
+
+    get totalFriends() {
+        return this.card ? this.card.totalFriends || 0 : 0;
+    }
+
+    get friendBatch() {
+        return this.card && this.card.friends ? this.card.friends.length : 0;
+    }
+
+    get friendsTruncated() {
+        return !!(this.card && this.card.friendsTruncated);
+    }
+
+    get rewardsTruncated() {
+        return !!(this.card && this.card.rewardsTruncated);
+    }
+
+    get totalFriendsText() {
+        return this.friendsTruncated
+            ? `${this.totalFriends}+`
+            : `${this.totalFriends}`;
+    }
+
+    get friendsExpandable() {
+        return this.totalFriends > this.friendBatch;
+    }
+
+    get friendsShowMoreVisible() {
+        return this.totalFriends > this.friendsLoaded.length;
+    }
+
+    get friendsCountText() {
+        return `Showing ${this.friendsLoaded.length} of ${this.totalFriendsText}`;
     }
 
     get hasReferredBy() {
@@ -228,69 +232,46 @@ export default class ExtolePersonCard extends LightningElement {
     }
 
     get programGroups() {
-        if (!this.hasFriends) return [];
-        const byProgram = new Map();
-        for (const f of this.card.friends) {
-            const program = f.program || 'unknown';
-            if (!byProgram.has(program)) byProgram.set(program, []);
-            const earned =
-                f.reward &&
-                (f.reward.state === 'PAID' ||
-                    f.reward.state === 'EARNED' ||
-                    f.reward.state === 'SENT');
-            const rewardDateStr = earned
-                ? formatShortDate(f.reward.dateEarned)
-                : null;
-            const statusText = earned
-                ? rewardDateStr
-                    ? `Reward earned ${rewardDateStr}`
-                    : 'Reward earned'
-                : '';
-            const rewardStateText = earned
-                ? f.reward.amountLabel
-                : 'no reward yet';
-            const rewardStateClass = earned
-                ? 'reward-amount-earned'
-                : 'reward-pending';
-            const sfdcUrl = f.sfdcRecordId
-                ? `/lightning/r/${f.sfdcObjectType}/${f.sfdcRecordId}/view`
-                : null;
-            const displayName = f.displayName || f.email || 'Anonymous';
-            const milestones = (f.steps || []).map((s) => ({
-                key: s.name,
-                label: s.label,
-                date: s.dateCompleted ? formatShortDate(s.dateCompleted) : null,
-                rowClass: s.dateCompleted
-                    ? 'milestone-row milestone-row-completed'
-                    : 'milestone-row milestone-row-pending'
-            }));
-            byProgram.get(program).push({
-                key: f.personId,
-                displayName,
-                sfdcUrl,
-                isLinked: !!f.sfdcRecordId,
-                avatarInitials: computeInitials(displayName),
-                avatarClass: earned
-                    ? 'avatar avatar-success'
-                    : 'avatar avatar-neutral',
-                avatarIsEarned: earned,
-                statusText,
-                rewardStateText,
-                rewardStateClass,
-                milestones,
-                hasMilestones: milestones.length > 0
-            });
+        return groupByProgram(this.friendsLoaded, this.rewardsTruncated);
+    }
+
+    async handleShowMore() {
+        if (this.isLoadingMore) return;
+        const have = new Set(this.friendsLoaded.map((f) => f.personId));
+        const next = (this.card.friendRefs || [])
+            .filter((r) => !have.has(r.personId))
+            .slice(0, this.friendBatch);
+        if (next.length === 0) return;
+        this.isLoadingMore = true;
+        this.loadError = null;
+        try {
+            const more = await getFriendDetails(detailsArgs(next));
+            if (!more || more.length === 0) {
+                this.loadError = 'Could not load more friends. Try again.';
+            } else {
+                this.friendsLoaded = [
+                    ...this.friendsLoaded,
+                    ...attachRewards(more, next)
+                ];
+            }
+        } catch (e) {
+            this.loadError =
+                (e && e.body && e.body.message) ||
+                'Could not load more friends.';
+        } finally {
+            this.isLoadingMore = false;
         }
-        const groups = [];
-        for (const [program, friends] of byProgram.entries()) {
-            const c = programColors(program);
-            groups.push({
-                program,
-                programStyle: `background:${c.fill};color:${c.primary};`,
-                friends
-            });
-        }
-        return groups;
+    }
+
+    async handleExpand(event) {
+        event.stopPropagation();
+        await ExtolePersonCardModal.open({
+            size: 'large',
+            friendRefs: this.card.friendRefs || [],
+            loaded: this.friendsLoaded,
+            friendsTruncated: this.friendsTruncated,
+            rewardsTruncated: this.rewardsTruncated
+        });
     }
 
     get referredByDecorated() {
@@ -336,7 +317,7 @@ export default class ExtolePersonCard extends LightningElement {
         textarea.select();
         try {
             document.execCommand('copy');
-        } catch (e) {
+        } catch {
             // Nothing further to fall back to -- consistent with this
             // handler's existing no-feedback behavior on failure.
         }
@@ -385,7 +366,8 @@ export default class ExtolePersonCard extends LightningElement {
     }
 
     get friendsLabel() {
-        const n = this.card && this.card.friends ? this.card.friends.length : 0;
-        return this.friendsExpanded ? 'Friends' : `Friends (${n})`;
+        return this.friendsExpanded
+            ? 'Friends'
+            : `Friends (${this.totalFriendsText})`;
     }
 }
