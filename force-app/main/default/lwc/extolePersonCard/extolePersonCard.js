@@ -158,7 +158,6 @@ export default class ExtolePersonCard extends LightningElement {
         return this.card ? this.card.totalFriends || 0 : 0;
     }
 
-    // The server sends one batch up front; Show more adds the same number.
     get friendBatch() {
         return this.card && this.card.friends ? this.card.friends.length : 0;
     }

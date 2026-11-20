@@ -94,8 +94,6 @@ public with sharing class ExtolePersonCard {
         public List<FriendRef> friendRefs = new List<FriendRef>();
         @AuraEnabled
         public Integer totalFriends = 0;
-        // True when the card read as many friends or rewards as it can, so
-        // there may be more than it shows.
         @AuraEnabled
         public Boolean friendsTruncated = false;
         @AuraEnabled
