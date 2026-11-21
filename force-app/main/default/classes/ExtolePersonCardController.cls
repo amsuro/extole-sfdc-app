@@ -5,6 +5,15 @@ public with sharing class ExtolePersonCardController {
     private static final Integer CALLOUTS_PER_FRIEND = 3;
     private static final Integer PAGE_SIZE = 100;
     private static final Integer MAX_PAGES = 10;
+    // Reward states for a reward that was given. EXPIRED can only follow
+    // EARNED, FULFILLED or SENT, so the person did get one.
+    private static final Set<String> REWARDED_STATES = new Set<String>{
+        'EARNED',
+        'FULFILLED',
+        'SENT',
+        'REDEEMED',
+        'EXPIRED'
+    };
 
     @AuraEnabled(cacheable=true)
     public static ExtolePersonCard.CardData getCardData(String email) {
@@ -419,49 +428,18 @@ public with sharing class ExtolePersonCardController {
         for (Object o : raw) {
             Map<String, Object> m = (Map<String, Object>) o;
             String state = getString(m, 'state');
-            if (state != 'SENT' && state != 'EARNED' && state != 'PAID')
+            if (!REWARDED_STATES.contains(state))
                 continue;
 
             Object dataRaw = m.get('data');
             if (!(dataRaw instanceof Map<String, Object>))
                 continue;
             Map<String, Object> data = (Map<String, Object>) dataRaw;
-            String friendId = getString(data, 'other_person_id');
+            String friendId = dataString(data, 'other_person_id');
             if (friendId == null || out.containsKey(friendId))
                 continue;
 
-            ExtolePersonCard.Reward r = new ExtolePersonCard.Reward();
-            r.rewardId = getString(m, 'reward_id');
-            r.state = state;
-            r.faceValueType = getString(m, 'face_value_type');
-            r.dateEarned = getString(m, 'date_earned');
-            r.programLabel = getString(m, 'program_label');
-            r.campaignId = getString(m, 'campaign_id');
-            Object fv = m.get('face_value');
-            if (fv != null) {
-                try {
-                    r.faceValue = Decimal.valueOf(String.valueOf(fv));
-                } catch (Exception ignored) {
-                }
-            }
-            if (r.faceValue != null) {
-                Map<String, String> SYMBOLS = new Map<String, String>{
-                    'usd' => '$',
-                    'gbp' => '£',
-                    'eur' => '€',
-                    'jpy' => '¥',
-                    'percent_off' => '%'
-                };
-                String sym = SYMBOLS.containsKey(r.faceValueType)
-                    ? SYMBOLS.get(r.faceValueType)
-                    : (r.faceValueType != null ? r.faceValueType : '');
-                r.amountLabel =
-                    sym +
-                    String.valueOf(
-                        r.faceValue.setScale(0, System.RoundingMode.HALF_UP)
-                    );
-            }
-            out.put(friendId, r);
+            out.put(friendId, buildReward(m, state));
         }
         return out;
     }
@@ -936,6 +914,66 @@ public with sharing class ExtolePersonCardController {
                 data.referredBy.sfdcObjectType = l.objectType;
             }
         }
+    }
+
+    private static ExtolePersonCard.Reward buildReward(
+        Map<String, Object> m,
+        String state
+    ) {
+        ExtoleReward reward = ExtoleReward.fromMap(m);
+        ExtolePersonCard.Reward cardReward = new ExtolePersonCard.Reward();
+        cardReward.state = state;
+        cardReward.dateEarned = reward.dateEarned;
+        if (reward.faceValue != null)
+            cardReward.amountLabel = formatAmount(
+                Decimal.valueOf(reward.faceValue),
+                reward.faceValueType
+            );
+        return cardReward;
+    }
+
+    private static String formatAmount(
+        Decimal faceValue,
+        String faceValueType
+    ) {
+        Map<String, String> symbols = new Map<String, String>{
+            'usd' => '$',
+            'cad' => 'CA$',
+            'aud' => 'A$',
+            'gbp' => '£',
+            'eur' => '€',
+            'jpy' => '¥'
+        };
+        Map<String, String> units = new Map<String, String>{
+            'points' => 'point',
+            'month' => 'month'
+        };
+        String typeKey = faceValueType == null
+            ? ''
+            : faceValueType.toLowerCase();
+        Decimal whole = faceValue.setScale(0, System.RoundingMode.HALF_UP);
+        String num = faceValue == whole
+            ? String.valueOf(whole)
+            : String.valueOf(
+                  faceValue.setScale(2, System.RoundingMode.HALF_UP)
+              );
+        if (typeKey.contains('percent'))
+            return num + '%';
+        if (symbols.containsKey(typeKey))
+            return symbols.get(typeKey) + num;
+        if (units.containsKey(typeKey))
+            return num + ' ' + units.get(typeKey) + (faceValue == 1 ? '' : 's');
+        return String.isBlank(faceValueType)
+            ? num
+            : num + ' ' + faceValueType.toUpperCase();
+    }
+
+    private static String dataString(Map<String, Object> data, String key) {
+        Object v = data.get(key);
+        if (!(v instanceof Map<String, Object>))
+            return null;
+        Object value = ((Map<String, Object>) v).get('value');
+        return value instanceof String ? (String) value : null;
     }
 
     private static String getString(Map<String, Object> m, String key) {

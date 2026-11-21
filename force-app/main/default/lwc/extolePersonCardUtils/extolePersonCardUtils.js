@@ -60,11 +60,9 @@ export function attachRewards(friends, refs) {
 }
 
 export function decorateFriend(f, rewardsTruncated = false) {
-    const earned =
-        f.reward &&
-        (f.reward.state === 'PAID' ||
-            f.reward.state === 'EARNED' ||
-            f.reward.state === 'SENT');
+    // The server only sends a reward once it has gone out (earned, sent or
+    // redeemed), so having one is enough.
+    const earned = !!f.reward;
     const rewardDateStr = earned ? formatShortDate(f.reward.dateEarned) : null;
     const statusText = earned
         ? rewardDateStr
