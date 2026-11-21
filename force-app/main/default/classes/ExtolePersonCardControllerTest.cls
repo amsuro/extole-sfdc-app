@@ -145,7 +145,6 @@ private class ExtolePersonCardControllerTest {
         System.assertEquals('friend@example.com', friend.email);
         System.assertEquals('Fiona Friend', friend.displayName);
         System.assertNotEquals(null, friend.reward);
-        System.assertEquals('r1', friend.reward.rewardId);
         System.assertEquals('$25', friend.reward.amountLabel);
         System.assertEquals(matchingFriend.Id, friend.sfdcRecordId);
         System.assertEquals('Contact', friend.sfdcObjectType);
@@ -521,14 +520,12 @@ private class ExtolePersonCardControllerTest {
         Test.stopTest();
 
         System.assertNotEquals(null, f.reward);
-        System.assertEquals('r9', f.reward.rewardId);
         System.assertEquals('FULFILLED', f.reward.state);
         System.assertEquals('$5', f.reward.amountLabel);
         System.assertEquals(
             '2026-11-18T08:21:25.891-08:00',
             f.reward.dateEarned
         );
-        System.assertEquals('referral-program', f.reward.programLabel);
     }
 
     @IsTest
@@ -577,6 +574,15 @@ private class ExtolePersonCardControllerTest {
         System.assertEquals('500 points', amountOf('500', 'POINTS'));
         System.assertEquals('£10', amountOf('10', 'GBP'));
         System.assertEquals('7 CHF', amountOf('7', 'CHF'));
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void testMonthsAndPointsAreSingularForOne() {
+        Test.startTest();
+        System.assertEquals('1 month', amountOf('1', 'MONTH'));
+        System.assertEquals('3 months', amountOf('3', 'MONTH'));
+        System.assertEquals('1 point', amountOf('1', 'POINTS'));
         Test.stopTest();
     }
 

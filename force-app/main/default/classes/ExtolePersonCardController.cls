@@ -920,27 +920,18 @@ public with sharing class ExtolePersonCardController {
         Map<String, Object> m,
         String state
     ) {
-        ExtolePersonCard.Reward r = new ExtolePersonCard.Reward();
-        r.rewardId = getString(m, 'id');
-        r.state = state;
-        r.faceValueType = getString(m, 'face_value_type');
-        r.dateEarned = getString(m, 'earned_date');
-        r.programLabel = getString(m, 'program');
-        r.campaignId = getString(m, 'campaign_id');
-        Object fv = m.get('face_value');
-        if (fv != null) {
-            try {
-                r.faceValue = Decimal.valueOf(String.valueOf(fv));
-            } catch (Exception ignored) {
-            }
-        }
-        if (r.faceValue != null)
-            r.amountLabel = formatAmount(r.faceValue, r.faceValueType);
-        return r;
+        ExtoleReward reward = ExtoleReward.fromMap(m);
+        ExtolePersonCard.Reward cardReward = new ExtolePersonCard.Reward();
+        cardReward.state = state;
+        cardReward.dateEarned = reward.dateEarned;
+        if (reward.faceValue != null)
+            cardReward.amountLabel = formatAmount(
+                Decimal.valueOf(reward.faceValue),
+                reward.faceValueType
+            );
+        return cardReward;
     }
 
-    // "$5", "$12.50", "£10", "20%", "500 points": a face value as a person
-    // reads it.
     private static String formatAmount(
         Decimal faceValue,
         String faceValueType
@@ -953,10 +944,13 @@ public with sharing class ExtolePersonCardController {
             'eur' => '€',
             'jpy' => '¥'
         };
+        Map<String, String> units = new Map<String, String>{
+            'points' => 'point',
+            'month' => 'month'
+        };
         String typeKey = faceValueType == null
             ? ''
             : faceValueType.toLowerCase();
-        // Whole numbers lose their decimals; anything else keeps two.
         Decimal whole = faceValue.setScale(0, System.RoundingMode.HALF_UP);
         String num = faceValue == whole
             ? String.valueOf(whole)
@@ -967,14 +961,13 @@ public with sharing class ExtolePersonCardController {
             return num + '%';
         if (symbols.containsKey(typeKey))
             return symbols.get(typeKey) + num;
-        if (typeKey == 'points')
-            return num + ' points';
+        if (units.containsKey(typeKey))
+            return num + ' ' + units.get(typeKey) + (faceValue == 1 ? '' : 's');
         return String.isBlank(faceValueType)
             ? num
             : num + ' ' + faceValueType.toUpperCase();
     }
 
-    // Data values arrive as {name, value}.
     private static String dataString(Map<String, Object> data, String key) {
         Object v = data.get(key);
         if (!(v instanceof Map<String, Object>))

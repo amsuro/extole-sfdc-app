@@ -10,21 +10,11 @@ public with sharing class ExtolePersonCard {
 
     public class Reward {
         @AuraEnabled
-        public String rewardId;
-        @AuraEnabled
         public String state;
-        @AuraEnabled
-        public Decimal faceValue;
-        @AuraEnabled
-        public String faceValueType;
         @AuraEnabled
         public String amountLabel;
         @AuraEnabled
         public String dateEarned;
-        @AuraEnabled
-        public String programLabel;
-        @AuraEnabled
-        public String campaignId;
     }
 
     public class JourneyStep {
