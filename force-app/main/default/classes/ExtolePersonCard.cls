@@ -92,8 +92,6 @@ public with sharing class ExtolePersonCard {
         @AuraEnabled
         public Boolean friendsTruncated = false;
         @AuraEnabled
-        public Boolean rewardsTruncated = false;
-        @AuraEnabled
         public Map<String, String> advocateAmounts = new Map<String, String>();
         @AuraEnabled
         public ReferredBy referredBy;

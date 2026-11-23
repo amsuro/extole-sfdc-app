@@ -61,7 +61,6 @@ public with sharing class ExtolePersonCardController {
                 MAX_DECISION_PAGES
             );
             result.friendsTruncated = relPages.truncated;
-            result.rewardsTruncated = rewardPages.truncated;
             Boolean statusKnown =
                 !rewardPages.truncated && !decisionPages.truncated;
             Set<String> declinedFriendIds = new Set<String>();
@@ -992,16 +991,13 @@ public with sharing class ExtolePersonCardController {
             String id = getString(m, 'id');
             if (id == null || fv == null)
                 continue;
-            try {
-                out.put(
-                    id,
-                    formatAmount(
-                        Decimal.valueOf(String.valueOf(fv)),
-                        getString(m, 'face_value_type')
-                    )
-                );
-            } catch (Exception ignored) {
-            }
+            out.put(
+                id,
+                formatAmount(
+                    Decimal.valueOf(String.valueOf(fv)),
+                    getString(m, 'face_value_type')
+                )
+            );
         }
         return out;
     }

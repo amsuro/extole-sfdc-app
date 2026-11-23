@@ -368,29 +368,10 @@ private class ExtolePersonCardControllerTest {
 
         System.assertEquals(1000, result.totalFriends);
         System.assertEquals(true, result.friendsTruncated);
-        System.assertEquals(false, result.rewardsTruncated);
     }
 
     @IsTest
-    static void testRewardsAtThePageLimitAreFlaggedTruncated() {
-        ExtoleConfigurableMock mock = new ExtoleConfigurableMock();
-        for (Integer page = 0; page < 10; page++) {
-            mock.addPattern(pageUrl('rewards', page), 200, filler(100));
-        }
-        Test.setMock(HttpCalloutMock.class, withPersonLookups(mock));
-
-        Test.startTest();
-        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
-            'advocate@example.com'
-        );
-        Test.stopTest();
-
-        System.assertEquals(true, result.rewardsTruncated);
-        System.assertEquals(false, result.friendsTruncated);
-    }
-
-    @IsTest
-    static void testAFailedReadIsFlaggedTruncated() {
+    static void testAFailedReadIsFlaggedTruncatedAndLeavesTheStatusUnknown() {
         ExtoleConfigurableMock mock = new ExtoleConfigurableMock()
             .addPattern(pageUrl('relationships', 0), 200, advocateRels(0, 100))
             .addPattern(pageUrl('relationships', 1), 500, '{"error":"boom"}')
@@ -405,7 +386,7 @@ private class ExtolePersonCardControllerTest {
 
         System.assertEquals(100, result.totalFriends);
         System.assertEquals(true, result.friendsTruncated);
-        System.assertEquals(true, result.rewardsTruncated);
+        System.assertEquals(null, result.friendRefs[0].status);
     }
 
     @IsTest
