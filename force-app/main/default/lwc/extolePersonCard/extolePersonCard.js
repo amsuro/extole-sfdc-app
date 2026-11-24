@@ -2,6 +2,7 @@ import { LightningElement, api, wire, track } from 'lwc';
 import { getRecord, getFieldValue } from 'lightning/uiRecordApi';
 import getCardData from '@salesforce/apex/ExtolePersonCardController.getCardData';
 import getFriendDetails from '@salesforce/apex/ExtolePersonCardController.getFriendDetails';
+import getReferrerDetails from '@salesforce/apex/ExtolePersonCardController.getReferrerDetails';
 import getShareLinkFieldSetting from '@salesforce/apex/ExtoleBackfillController.getShareLinkFieldSetting';
 import ExtolePersonCardModal from 'c/extolePersonCardModal';
 import {
@@ -9,6 +10,8 @@ import {
     computeInitials,
     groupByProgram,
     groupReferrers,
+    referrerKey,
+    mergeReferrers,
     detailsArgs,
     attachRewards
 } from 'c/extolePersonCardUtils';
@@ -17,8 +20,6 @@ import LEAD_EMAIL from '@salesforce/schema/Lead.Email';
 import LEAD_NAME from '@salesforce/schema/Lead.Name';
 import CONTACT_EMAIL from '@salesforce/schema/Contact.Email';
 import CONTACT_NAME from '@salesforce/schema/Contact.Name';
-
-const REFERRER_BATCH = 5;
 
 export default class ExtolePersonCard extends LightningElement {
     @api recordId;
@@ -29,8 +30,9 @@ export default class ExtolePersonCard extends LightningElement {
     @track isLoading = false;
     @track isLoadingMore = false;
     @track friendsLoaded = [];
+    @track referrersLoaded = [];
+    @track isLoadingMoreReferrers = false;
     @track loadError = null;
-    referrerLimit = REFERRER_BATCH;
     @track sectionCollapsed = {
         shareLinks: false,
         friends: true,
@@ -131,6 +133,7 @@ export default class ExtolePersonCard extends LightningElement {
         try {
             this.card = await getCardData({ email: this.email });
             this.friendsLoaded = (this.card && this.card.friends) || [];
+            this.referrersLoaded = (this.card && this.card.referrers) || [];
         } catch (e) {
             this.loadError =
                 (e && e.body && e.body.message) ||
@@ -188,12 +191,12 @@ export default class ExtolePersonCard extends LightningElement {
         return `Showing ${this.friendsLoaded.length} of ${this.totalFriendsText}`;
     }
 
-    get referrers() {
-        return (this.card && this.card.referrers) || [];
+    get totalReferrers() {
+        return this.card ? this.card.totalReferrers || 0 : 0;
     }
 
     get hasReferredBy() {
-        return this.referrers.length > 0;
+        return this.totalReferrers > 0;
     }
 
     get displayName() {
@@ -279,23 +282,55 @@ export default class ExtolePersonCard extends LightningElement {
     }
 
     get referrerGroups() {
-        return groupReferrers(this.referrers.slice(0, this.referrerLimit));
+        return groupReferrers(this.referrersLoaded);
+    }
+
+    get referrerBatch() {
+        return this.card && this.card.referrers
+            ? this.card.referrers.length
+            : 0;
     }
 
     get referrersExpandable() {
-        return this.referrers.length > REFERRER_BATCH;
+        return this.totalReferrers > this.referrerBatch;
     }
 
     get referrersShowMoreVisible() {
-        return this.referrers.length > this.referrerLimit;
+        return this.totalReferrers > this.referrersLoaded.length;
     }
 
     get referrersCountText() {
-        return `Showing ${Math.min(this.referrerLimit, this.referrers.length)} of ${this.referrers.length}`;
+        return `Showing ${this.referrersLoaded.length} of ${this.totalReferrers}`;
     }
 
-    handleShowMoreReferrers() {
-        this.referrerLimit += REFERRER_BATCH;
+    async handleShowMoreReferrers() {
+        if (this.isLoadingMoreReferrers) return;
+        const have = new Set(this.referrersLoaded.map(referrerKey));
+        const next = (this.card.referrerRefs || [])
+            .filter((r) => !have.has(referrerKey(r)))
+            .slice(0, this.referrerBatch);
+        if (next.length === 0) return;
+        this.isLoadingMoreReferrers = true;
+        this.loadError = null;
+        try {
+            const more = await getReferrerDetails({
+                personIds: next.map((r) => r.personId)
+            });
+            if (!more || more.length === 0) {
+                this.loadError = 'Could not load more referrers. Try again.';
+            } else {
+                this.referrersLoaded = [
+                    ...this.referrersLoaded,
+                    ...mergeReferrers(more, next)
+                ];
+            }
+        } catch (e) {
+            this.loadError =
+                (e && e.body && e.body.message) ||
+                'Could not load more referrers.';
+        } finally {
+            this.isLoadingMoreReferrers = false;
+        }
     }
 
     handleCopyLink(event) {
@@ -375,7 +410,7 @@ export default class ExtolePersonCard extends LightningElement {
     get referredByLabel() {
         return this.referredByExpanded
             ? 'Referred by'
-            : `Referred by (${this.referrers.length})`;
+            : `Referred by (${this.totalReferrers})`;
     }
 
     get friendsLabel() {

@@ -6,6 +6,7 @@ import {
     decorateFriend,
     groupByProgram,
     groupReferrers,
+    mergeReferrers,
     detailsArgs,
     attachRewards
 } from 'c/extolePersonCardUtils';
@@ -266,5 +267,25 @@ describe('groupReferrers', () => {
         expect(groups[0].program).toBe('unknown');
         expect(groups[0].referrers[0].displayName).toBe('Anonymous');
         expect(groupReferrers(undefined)).toEqual([]);
+    });
+});
+
+describe('mergeReferrers', () => {
+    it('puts each loaded name on its reference, and a person in two programs on both', () => {
+        const out = mergeReferrers(
+            [{ personId: 'p1', displayName: 'Ann', sfdcRecordId: '003x' }],
+            [
+                { personId: 'p1', program: 'a' },
+                { personId: 'p1', program: 'b' },
+                { personId: 'p2', program: 'a' }
+            ]
+        );
+        expect(out.map((r) => r.displayName)).toEqual([
+            'Ann',
+            'Ann',
+            undefined
+        ]);
+        expect(out.map((r) => r.program)).toEqual(['a', 'b', 'a']);
+        expect(out[0].sfdcRecordId).toBe('003x');
     });
 });
