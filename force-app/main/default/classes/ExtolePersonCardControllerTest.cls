@@ -12,7 +12,7 @@ private class ExtolePersonCardControllerTest {
         System.assertEquals(false, result.hasAnyData);
         System.assertEquals(0, result.shareLinks.size());
         System.assertEquals(0, result.friends.size());
-        System.assertEquals(null, result.referredBy);
+        System.assertEquals(0, result.referrers.size());
     }
 
     @IsTest
@@ -153,9 +153,9 @@ private class ExtolePersonCardControllerTest {
         System.assertEquals('friend_signup', friend.steps[0].name);
         System.assertEquals('2026-01-02', friend.steps[0].dateCompleted);
 
-        System.assertNotEquals(null, result.referredBy);
-        System.assertEquals('p_referrer', result.referredBy.personId);
-        System.assertEquals('referrer@example.com', result.referredBy.email);
+        System.assertEquals(1, result.referrers.size());
+        System.assertEquals('p_referrer', result.referrers[0].personId);
+        System.assertEquals('referrer@example.com', result.referrers[0].email);
     }
 
     @IsTest
@@ -305,6 +305,137 @@ private class ExtolePersonCardControllerTest {
                 '","state":"CANCELED"}';
         }
         return body + ']';
+    }
+
+    private static String referrerRels(Integer count, String program) {
+        String body = '[';
+        for (Integer i = 0; i < count; i++) {
+            body +=
+                (i > 0 ? ',' : '') +
+                '{"my_role":"FRIEND","other_person_id":"p_r' +
+                i +
+                '","program":"' +
+                program +
+                '","other_person":{"identity_key":"email","identity_key_value":"r' +
+                i +
+                '@example.com"}}';
+        }
+        return body + ']';
+    }
+
+    private static ExtoleConfigurableMock referrersMock(String relationships) {
+        return new ExtoleConfigurableMock()
+            .addPattern(
+                '/v5/persons/p_advocate/relationships?limit=100&offset=0',
+                200,
+                relationships
+            )
+            .addPattern(
+                '/data',
+                200,
+                '{"first_name":{"name":"first_name","value":"Looked","scope":"PUBLIC"},' +
+                '"last_name":{"name":"last_name","value":"Up","scope":"PUBLIC"}}'
+            )
+            .addPattern('/steps', 200, '[]')
+            .addPattern(
+                '/v5/persons?identity_key_value=',
+                200,
+                '[{"id":"p_advocate"}]'
+            )
+            .addPattern('/v5/persons/p_r', 200, '{"id":"p_r"}')
+            .withDefault(200, '[]');
+    }
+
+    @IsTest
+    static void testEveryReferrerIsListedOncePerProgram() {
+        Test.setMock(
+            HttpCalloutMock.class,
+            referrersMock(
+                '[{"my_role":"FRIEND","other_person_id":"p_r0","program":"prog-a"},' +
+                    '{"my_role":"FRIEND","other_person_id":"p_r1","program":"prog-b"},' +
+                    '{"my_role":"FRIEND","other_person_id":"p_r0","program":"prog-b"},' +
+                    '{"my_role":"FRIEND","other_person_id":"p_r0","program":"prog-a"}]'
+            )
+        );
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals(true, result.hasAnyData);
+        System.assertEquals(3, result.referrers.size());
+        System.assertEquals('p_r0', result.referrers[0].personId);
+        System.assertEquals('prog-a', result.referrers[0].program);
+        System.assertEquals('p_r1', result.referrers[1].personId);
+        System.assertEquals('prog-b', result.referrers[1].program);
+        System.assertEquals('p_r0', result.referrers[2].personId);
+        System.assertEquals('prog-b', result.referrers[2].program);
+    }
+
+    @IsTest
+    static void testOnlyTheFirstReferrersAreLookedUpByName() {
+        Contact linked = new Contact(
+            LastName = 'Linked',
+            Email = 'r6@example.com'
+        );
+        insert linked;
+        Test.setMock(
+            HttpCalloutMock.class,
+            referrersMock(referrerRels(7, 'prog-a'))
+        );
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals(7, result.referrers.size());
+        System.assertEquals('Looked Up', result.referrers[4].displayName);
+        System.assertEquals('r5@example.com', result.referrers[5].displayName);
+        System.assertEquals('r6@example.com', result.referrers[6].email);
+        System.assertEquals(linked.Id, result.referrers[6].sfdcRecordId);
+        System.assertEquals('Contact', result.referrers[6].sfdcObjectType);
+    }
+
+    @IsTest
+    static void testReferrersAreCapped() {
+        Test.setMock(
+            HttpCalloutMock.class,
+            referrersMock(referrerRels(60, 'prog-a'))
+        );
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals(50, result.referrers.size());
+    }
+
+    @IsTest
+    static void testAFriendWhoIsAlsoAReferrerShowsInBoth() {
+        Test.setMock(
+            HttpCalloutMock.class,
+            referrersMock(
+                '[{"my_role":"ADVOCATE","other_person_id":"p_r0","program":"prog-a"},' +
+                '{"my_role":"FRIEND","other_person_id":"p_r0","program":"prog-b"}]'
+            )
+        );
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals(1, result.friends.size());
+        System.assertEquals(1, result.referrers.size());
+        System.assertEquals('Looked Up', result.referrers[0].displayName);
+        System.assertEquals('Looked Up', result.friends[0].displayName);
     }
 
     @IsTest

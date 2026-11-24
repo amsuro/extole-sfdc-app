@@ -94,7 +94,7 @@ public with sharing class ExtolePersonCard {
         @AuraEnabled
         public Map<String, String> advocateAmounts = new Map<String, String>();
         @AuraEnabled
-        public ReferredBy referredBy;
+        public List<ReferredBy> referrers = new List<ReferredBy>();
         @AuraEnabled
         public Boolean hasAnyData = false;
     }

@@ -5,6 +5,7 @@ public with sharing class ExtolePersonCardController {
     private static final Integer CALLOUTS_PER_FRIEND = 3;
     private static final Integer PAGE_SIZE = 100;
     private static final Integer MAX_PAGES = 10;
+    private static final Integer MAX_REFERRERS = 50;
     private static final Set<String> DECLINED_STATES = new Set<String>{
         'FAILED',
         'CANCELED',
@@ -76,6 +77,7 @@ public with sharing class ExtolePersonCardController {
                 decisionsAttributed;
 
             Set<String> seenFriendIds = new Set<String>();
+            Set<String> seenReferrers = new Set<String>();
             List<String> personIdsToFetch = new List<String>();
             Map<String, String> personIdToProgram = new Map<String, String>();
             Set<String> friendPrograms = new Set<String>();
@@ -106,18 +108,25 @@ public with sharing class ExtolePersonCardController {
                         f.reward = ref.reward;
                         f.status = ref.status;
                         result.friends.add(f);
-                        personIdsToFetch.add(otherId);
+                        queueLookup(personIdsToFetch, otherId);
                         personIdToProgram.put(otherId, f.program);
                         if (String.isNotBlank(f.program))
                             friendPrograms.add(f.program);
                     }
-                } else if (role == 'FRIEND' && result.referredBy == null) {
+                } else if (
+                    role == 'FRIEND' &&
+                    result.referrers.size() < MAX_REFERRERS &&
+                    seenReferrers.add(otherId + '|' + getString(rel, 'program'))
+                ) {
                     ExtolePersonCard.ReferredBy rb = new ExtolePersonCard.ReferredBy();
                     rb.personId = otherId;
                     rb.program = getString(rel, 'program');
-                    result.referredBy = rb;
-                    personIdsToFetch.add(otherId);
-                    personIdToProgram.put(otherId, rb.program);
+                    // Past the first batch the name is this email, with no lookup.
+                    if ('email'.equals(otherIdentity(rel, 'identity_key')))
+                        rb.email = otherIdentity(rel, 'identity_key_value');
+                    result.referrers.add(rb);
+                    if (result.referrers.size() <= FRIEND_BATCH)
+                        queueLookup(personIdsToFetch, otherId);
                 }
             }
 
@@ -162,24 +171,20 @@ public with sharing class ExtolePersonCardController {
                     f.steps = profile.steps;
                 }
             }
-            if (result.referredBy != null) {
-                PersonProfile profile = profileById.get(
-                    result.referredBy.personId
-                );
-                if (profile != null) {
-                    result.referredBy.email = profile.email;
-                    result.referredBy.displayName = String.isNotBlank(
-                            profile.displayName
-                        )
-                        ? profile.displayName
-                        : profile.email;
-                }
+            for (ExtolePersonCard.ReferredBy rb : result.referrers) {
+                PersonProfile profile = profileById.get(rb.personId);
+                if (profile != null && String.isNotBlank(profile.email))
+                    rb.email = profile.email;
+                rb.displayName = profile != null &&
+                    String.isNotBlank(profile.displayName)
+                    ? profile.displayName
+                    : rb.email;
             }
 
             result.hasAnyData =
                 !result.shareLinks.isEmpty() ||
                 !result.friends.isEmpty() ||
-                result.referredBy != null;
+                !result.referrers.isEmpty();
 
             List<String> emails = collectEmails(result);
             if (!emails.isEmpty()) {
@@ -881,6 +886,18 @@ public with sharing class ExtolePersonCardController {
 
     // ── Shared helpers ────────────────────────────────────────────────────────
 
+    private static void queueLookup(List<String> ids, String personId) {
+        if (!ids.contains(personId))
+            ids.add(personId);
+    }
+
+    private static String otherIdentity(Map<String, Object> rel, String key) {
+        Object other = rel.get('other_person');
+        if (!(other instanceof Map<String, Object>))
+            return null;
+        return getString((Map<String, Object>) other, key);
+    }
+
     private static List<String> collectEmails(ExtolePersonCard.CardData data) {
         List<String> emails = new List<String>();
         if (data.friends != null) {
@@ -889,10 +906,11 @@ public with sharing class ExtolePersonCardController {
                     emails.add(f.email);
             }
         }
-        if (
-            data.referredBy != null && String.isNotBlank(data.referredBy.email)
-        ) {
-            emails.add(data.referredBy.email);
+        if (data.referrers != null) {
+            for (ExtolePersonCard.ReferredBy rb : data.referrers) {
+                if (String.isNotBlank(rb.email))
+                    emails.add(rb.email);
+            }
         }
         return emails;
     }
@@ -921,13 +939,17 @@ public with sharing class ExtolePersonCardController {
                 }
             }
         }
-        if (data.referredBy != null && data.referredBy.email != null) {
-            ExtolePersonCard.SfdcLink l = byEmail.get(
-                data.referredBy.email.toLowerCase()
-            );
-            if (l != null) {
-                data.referredBy.sfdcRecordId = l.recordId;
-                data.referredBy.sfdcObjectType = l.objectType;
+        if (data.referrers != null) {
+            for (ExtolePersonCard.ReferredBy rb : data.referrers) {
+                if (rb.email == null)
+                    continue;
+                ExtolePersonCard.SfdcLink l = byEmail.get(
+                    rb.email.toLowerCase()
+                );
+                if (l != null) {
+                    rb.sfdcRecordId = l.recordId;
+                    rb.sfdcObjectType = l.objectType;
+                }
             }
         }
     }
