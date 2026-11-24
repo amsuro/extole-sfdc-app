@@ -57,18 +57,19 @@ public with sharing class ExtolePersonCardController {
                 config,
                 client,
                 personPath + '/steps',
-                'journey_names=reward',
+                'names=reward_evaluated&names=reward_manually_declined&names=reward_manually_approved',
                 MAX_DECISION_PAGES
             );
             result.friendsTruncated = relPages.truncated;
-            Boolean statusKnown =
-                !rewardPages.truncated && !decisionPages.truncated;
             Set<String> declinedFriendIds = new Set<String>();
             Map<String, ExtolePersonCard.Reward> rewardsByFriendId = rewardsByFriend(
                 rewardPages.rows,
                 declinedFriendIds
             );
-            addDeclinedEvaluations(decisionPages.rows, declinedFriendIds);
+            Boolean statusKnown =
+                !rewardPages.truncated &&
+                !decisionPages.truncated &&
+                addDeclinedEvaluations(decisionPages.rows, declinedFriendIds);
 
             Set<String> seenFriendIds = new Set<String>();
             List<String> personIdsToFetch = new List<String>();
@@ -976,7 +977,7 @@ public with sharing class ExtolePersonCardController {
         Map<String, String> out = new Map<String, String>();
         HttpResponse res = client.send(
             config,
-            getRequest(config, '/v6/reward-suppliers')
+            getRequest(config, '/v6/reward-suppliers/built')
         );
         if (res.getStatusCode() < 200 || res.getStatusCode() >= 300)
             return out;
@@ -1003,7 +1004,8 @@ public with sharing class ExtolePersonCardController {
     }
 
     // The advocate's reward is the reward component installed under the
-    // campaign's advocate role.
+    // campaign's advocate role. With more than one reward there, no single
+    // amount fits every friend, so there is none.
     private static String fetchAdvocateAmount(
         ExtoleConfig config,
         ExtoleClient client,
@@ -1035,6 +1037,7 @@ public with sharing class ExtolePersonCardController {
             )
                 advocateRoleIds.add(getString(comp, 'id'));
         }
+        Map<String, Map<String, Object>> advocateRewards = new Map<String, Map<String, Object>>();
         for (Object o : components) {
             Map<String, Object> comp = (Map<String, Object>) o;
             if (!hasType(comp, 'reward-v10.0'))
@@ -1044,10 +1047,14 @@ public with sharing class ExtolePersonCardController {
                 continue;
             for (Object parent : (List<Object>) parents) {
                 if (advocateRoleIds.contains((String) parent))
-                    return supplierAmounts.get(rewardSupplierId(comp));
+                    advocateRewards.put(getString(comp, 'id'), comp);
             }
         }
-        return null;
+        if (advocateRewards.size() != 1)
+            return null;
+        return supplierAmounts.get(
+            rewardSupplierId(advocateRewards.values()[0])
+        );
     }
 
     private static Boolean hasType(Map<String, Object> comp, String type) {
@@ -1103,13 +1110,16 @@ public with sharing class ExtolePersonCardController {
 
     // Adds the friends whose latest reward decision is a decline. A decision
     // is a reward_evaluated step (state "declined") or a manual decline or
-    // approval; the newest one for a friend wins.
-    private static void addDeclinedEvaluations(
+    // approval; the newest one for a friend wins. Returns false when a
+    // decision is not keyed by a friend's person id (rewardBehavior
+    // EVERY_ACTION keys it by a step event), since it can't be tied to one.
+    private static Boolean addDeclinedEvaluations(
         List<Object> steps,
         Set<String> declinedFriendIds
     ) {
         Map<String, String> latestDate = new Map<String, String>();
         Map<String, Boolean> latestDeclined = new Map<String, Boolean>();
+        Boolean attributed = true;
         for (Object o : steps) {
             Map<String, Object> step = (Map<String, Object>) o;
             String name = getString(step, 'name');
@@ -1124,8 +1134,14 @@ public with sharing class ExtolePersonCardController {
                 continue;
 
             Object key = step.get('journey_key');
-            if (!(key instanceof Map<String, Object>))
+            if (
+                !(key instanceof Map<String, Object>) ||
+                'identity_person_id' !=
+                getString((Map<String, Object>) key, 'name')
+            ) {
+                attributed = false;
                 continue;
+            }
             String friendId = getString((Map<String, Object>) key, 'value');
             String stepDate = getString(step, 'event_date');
             if (friendId == null || stepDate == null)
@@ -1142,6 +1158,7 @@ public with sharing class ExtolePersonCardController {
             if (latestDeclined.get(friendId))
                 declinedFriendIds.add(friendId);
         }
+        return attributed;
     }
 
     private static ExtolePersonCard.Reward buildReward(

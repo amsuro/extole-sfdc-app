@@ -634,6 +634,12 @@ private class ExtolePersonCardControllerTest {
         Test.stopTest();
     }
 
+    private static String decisionsUrl(Integer page) {
+        return '/steps?names=reward_evaluated&names=reward_manually_declined' +
+            '&names=reward_manually_approved&limit=100&offset=' +
+            (page * 100);
+    }
+
     private static String decision(String name, String stamp, String state) {
         return '{"name":"' +
             name +
@@ -653,11 +659,7 @@ private class ExtolePersonCardControllerTest {
         String decisions
     ) {
         return new ExtoleConfigurableMock()
-            .addPattern(
-                '/steps?journey_names=reward&limit=100&offset=0',
-                status,
-                decisions
-            )
+            .addPattern(decisionsUrl(0), status, decisions)
             .addPattern(
                 '/data',
                 200,
@@ -785,11 +787,7 @@ private class ExtolePersonCardControllerTest {
         filler += ']';
         ExtoleConfigurableMock capped = new ExtoleConfigurableMock();
         for (Integer page = 0; page < 3; page++) {
-            capped.addPattern(
-                '/steps?journey_names=reward&limit=100&offset=' + (page * 100),
-                200,
-                filler
-            );
+            capped.addPattern(decisionsUrl(page), 200, filler);
         }
         Test.startTest();
         ExtolePersonCard.FriendRef ref = refFor(
@@ -799,6 +797,24 @@ private class ExtolePersonCardControllerTest {
                     200,
                     advocateRels(0, 1)
                 )
+            )
+        );
+        Test.stopTest();
+
+        System.assertEquals(null, ref.status);
+    }
+
+    @IsTest
+    static void testADecisionNotKeyedByAFriendLeavesTheStatusUnknown() {
+        // With rewardBehavior EVERY_ACTION the journey key is a step event,
+        // so this decline can't be tied to a friend.
+        Test.startTest();
+        ExtolePersonCard.FriendRef ref = refFor(
+            decisionsMock(
+                200,
+                '[{"name":"reward_evaluated","event_date":"2026-11-18T12:00:00.000-08:00",' +
+                    '"journey_key":{"name":"step_event_id","value":"e1"},' +
+                    '"data":{"state":{"scope":"PRIVATE","value":"declined"}}}]'
             )
         );
         Test.stopTest();
@@ -833,7 +849,7 @@ private class ExtolePersonCardControllerTest {
     private static ExtoleConfigurableMock amountsMock(String components) {
         return manyFriendsMock(1)
             .addPattern(
-                '/v6/reward-suppliers',
+                '/v6/reward-suppliers/built',
                 200,
                 '[{"id":"s1","face_value":5,"face_value_type":"USD"},' +
                 '{"id":"s2","face_value":10,"face_value_type":"USD"}]'
@@ -893,6 +909,56 @@ private class ExtolePersonCardControllerTest {
     }
 
     @IsTest
+    static void testNoAdvocateAmountWhenTheRoleHasMoreThanOneReward() {
+        Test.startTest();
+        String amount = advocateAmount(
+            '[' +
+                role('ra', 'advocate') +
+                ',' +
+                reward('signup', 'ra', 's1') +
+                ',' +
+                reward('purchase', 'ra', 's2') +
+                ']'
+        );
+        Test.stopTest();
+
+        System.assertEquals(null, amount);
+    }
+
+    @IsTest
+    static void testAnExpressionFaceValueInTheUnbuiltSuppliersCannotBreakTheCard() {
+        // face_value is a buildtime evaluatable: the raw list can hold an
+        // expression string, the built list holds its value.
+        Test.setMock(
+            HttpCalloutMock.class,
+            amountsMock(
+                    '[' +
+                        role('ra', 'advocate') +
+                        ',' +
+                        reward('r', 'ra', 's2') +
+                        ']'
+                )
+                .addPattern(
+                    '/v6/reward-suppliers',
+                    200,
+                    '[{"id":"s2","face_value":"javascript@buildtime:2*5","face_value_type":"USD"}]'
+                )
+        );
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals('friend@example.com', result.friends[0].email);
+        System.assertEquals(
+            '$10',
+            result.advocateAmounts.get('referral-program')
+        );
+    }
+
+    @IsTest
     static void testARewardIsNotTheAdvocatesJustBecauseOfItsName() {
         Test.startTest();
         String amount = advocateAmount(
@@ -924,7 +990,8 @@ private class ExtolePersonCardControllerTest {
     static void testNoAmountWhenTheRewardSetupCannotBeRead() {
         Test.setMock(
             HttpCalloutMock.class,
-            manyFriendsMock(1).addPattern('/v6/reward-suppliers', 500, '{}')
+            manyFriendsMock(1)
+                .addPattern('/v6/reward-suppliers/built', 500, '{}')
         );
 
         Test.startTest();

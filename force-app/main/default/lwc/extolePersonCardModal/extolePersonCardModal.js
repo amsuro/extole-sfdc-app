@@ -14,11 +14,6 @@ const FILTERS = [
     { key: 'pending', label: 'Not rewarded yet' },
     { key: 'declined', label: 'Declined' }
 ];
-const STATUS_FOR_FILTER = {
-    rewarded: 'rewarded',
-    pending: 'pending',
-    declined: 'declined'
-};
 
 export default class ExtolePersonCardModal extends LightningModal {
     @api friendRefs = [];
@@ -41,8 +36,9 @@ export default class ExtolePersonCardModal extends LightningModal {
 
     get shownRefs() {
         const refs = this.friendRefs || [];
-        const want = STATUS_FOR_FILTER[this.filter];
-        return want ? refs.filter((r) => r.status === want) : refs;
+        return this.filter === 'all'
+            ? refs
+            : refs.filter((r) => r.status === this.filter);
     }
 
     get total() {
@@ -68,10 +64,6 @@ export default class ExtolePersonCardModal extends LightningModal {
     get headerLabel() {
         const all = (this.friendRefs || []).length;
         return `Friends (${this.friendsTruncated ? `${all}+` : all})`;
-    }
-
-    get hasResults() {
-        return this.total > 0;
     }
 
     get showEmpty() {
