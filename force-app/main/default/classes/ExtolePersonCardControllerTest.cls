@@ -846,6 +846,36 @@ private class ExtolePersonCardControllerTest {
         System.assertEquals(null, result.friendRefs[1].status);
     }
 
+    @IsTest
+    static void testADeclineThatWasReadShowsWhenRewardsAreAtThePageLimit() {
+        ExtoleConfigurableMock mock = new ExtoleConfigurableMock();
+        for (Integer page = 0; page < 10; page++) {
+            mock.addPattern(pageUrl('rewards', page), 200, filler(100));
+        }
+        mock.addPattern(
+                decisionsUrl(0),
+                200,
+                '[' +
+                    decision(
+                        'reward_evaluated',
+                        '2026-11-18T12:00:00.000-08:00',
+                        'declined'
+                    ) +
+                    ']'
+            )
+            .addPattern(pageUrl('relationships', 0), 200, advocateRels(0, 2));
+        Test.setMock(HttpCalloutMock.class, withPersonLookups(mock));
+
+        Test.startTest();
+        ExtolePersonCard.CardData result = ExtolePersonCardController.getCardData(
+            'advocate@example.com'
+        );
+        Test.stopTest();
+
+        System.assertEquals('declined', result.friendRefs[0].status);
+        System.assertEquals(null, result.friendRefs[1].status);
+    }
+
     private static ExtoleConfigurableMock amountsMock(String components) {
         return manyFriendsMock(1)
             .addPattern(

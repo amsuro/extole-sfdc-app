@@ -66,10 +66,14 @@ public with sharing class ExtolePersonCardController {
                 rewardPages.rows,
                 declinedFriendIds
             );
+            Boolean decisionsAttributed = addDeclinedEvaluations(
+                decisionPages.rows,
+                declinedFriendIds
+            );
             Boolean statusKnown =
                 !rewardPages.truncated &&
                 !decisionPages.truncated &&
-                addDeclinedEvaluations(decisionPages.rows, declinedFriendIds);
+                decisionsAttributed;
 
             Set<String> seenFriendIds = new Set<String>();
             List<String> personIdsToFetch = new List<String>();
