@@ -8,14 +8,21 @@ import {
 } from 'c/extolePersonCardUtils';
 
 const PAGE_SIZE = 10;
+const FILTERS = [
+    { key: 'all', label: 'All' },
+    { key: 'rewarded', label: 'Rewarded' },
+    { key: 'pending', label: 'Not rewarded yet' },
+    { key: 'declined', label: 'Declined' }
+];
 
 export default class ExtolePersonCardModal extends LightningModal {
     @api friendRefs = [];
     @api loaded = [];
     @api friendsTruncated = false;
-    @api rewardsTruncated = false;
+    @api advocateAmounts;
 
     byId = {};
+    filter = 'all';
     page = 0;
     isLoading = false;
     error = null;
@@ -27,8 +34,15 @@ export default class ExtolePersonCardModal extends LightningModal {
         this.ensurePageLoaded();
     }
 
+    get shownRefs() {
+        const refs = this.friendRefs || [];
+        return this.filter === 'all'
+            ? refs
+            : refs.filter((r) => r.status === this.filter);
+    }
+
     get total() {
-        return (this.friendRefs || []).length;
+        return this.shownRefs.length;
     }
 
     get totalText() {
@@ -37,21 +51,40 @@ export default class ExtolePersonCardModal extends LightningModal {
 
     get pageRefs() {
         const start = this.page * PAGE_SIZE;
-        return (this.friendRefs || []).slice(start, start + PAGE_SIZE);
+        return this.shownRefs.slice(start, start + PAGE_SIZE);
     }
 
     get groups() {
         return groupByProgram(
             this.pageRefs.map((r) => this.byId[r.personId]).filter(Boolean),
-            this.rewardsTruncated
+            this.advocateAmounts
         );
     }
 
     get headerLabel() {
-        return `Friends (${this.totalText})`;
+        const all = (this.friendRefs || []).length;
+        return `Friends (${this.friendsTruncated ? `${all}+` : all})`;
+    }
+
+    get showEmpty() {
+        return !this.isLoading && !this.error && this.total === 0;
+    }
+
+    get filters() {
+        return FILTERS.map((f) => ({
+            ...f,
+            cls: f.key === this.filter ? 'chip chip-active' : 'chip'
+        }));
+    }
+
+    handleFilter(event) {
+        this.filter = event.currentTarget.dataset.filter;
+        this.page = 0;
+        this.ensurePageLoaded();
     }
 
     get rangeText() {
+        if (this.total === 0) return '0 of 0';
         const start = this.page * PAGE_SIZE + 1;
         const end = Math.min(start + PAGE_SIZE - 1, this.total);
         return `${start}–${end} of ${this.totalText}`;
